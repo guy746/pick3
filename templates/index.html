@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pick1 - Conveyor Visualization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pick1 Conveyor System</h1>
+            <div class="status">
+                <span id="connection-status" class="disconnected">Disconnected</span>
+                <span id="object-count">Objects: 0</span>
+                <span id="cnc-status">CNC: Idle</span>
+            </div>
+        </header>
+        
+        <main>
+            <canvas id="conveyor-canvas"></canvas>
+            
+            <div class="legend">
+                <h3>Legend</h3>
+                <div class="legend-item">
+                    <span class="color-box green"></span> Green - Circuit Board (Pickable)
+                </div>
+                <div class="legend-item">
+                    <span class="color-box blue"></span> Blue - Non-pickable
+                </div>
+                <div class="legend-item">
+                    <span class="color-box red"></span> Red - Non-pickable
+                </div>
+                <div class="legend-item">
+                    <span class="color-box yellow"></span> Yellow - Non-pickable
+                </div>
+                <div class="legend-item">
+                    <span class="color-box orange"></span> Orange - Non-pickable
+                </div>
+            </div>
+            
+            <div class="zones">
+                <h3>Zones</h3>
+                <div>Vision Detection: 50mm</div>
+                <div>Trigger Zone: 300mm</div>
+                <div>Pickup Zone: 375-425mm</div>
+                <div>Post-Pick Monitor: 475mm</div>
+            </div>
+        </div>
+        </main>
+    </div>
+    
+    <script>
+        const CONFIG = {{ config | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='js/canvas.js') }}"></script>
+</body>
+</html>
