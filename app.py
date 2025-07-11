@@ -26,11 +26,11 @@ CONVEYOR_CONFIG = {
     'length': 500,  # mm (quarter of original)
     'width': 400,    # mm (100mm per lane)
     'lanes': 4,
-    'belt_speed': 100,  # mm/sec (500mm in 5 seconds)
+    'belt_speed': 50,   # mm/sec (500mm in 10 seconds)
     'vision_zone': 50,     # mm from start (10%)
-    'trigger_zone': 300,    # mm (trigger line)
-    'pickup_zone_start': 375,  # 75mm gap from trigger
-    'pickup_zone_end': 425,    # 50mm pickup zone
+    'trigger_zone': 250,    # mm (trigger line)
+    'pickup_zone_start': 300,  # 50mm gap from trigger
+    'pickup_zone_end': 375,    # 75mm pickup zone (50% larger)
     'post_pick_zone': 475      # near end
 }
 
@@ -105,6 +105,16 @@ def get_world_state():
         missed_alert = redis_client.get('missed_pickup:alert')
         if missed_alert:
             state['missed_pickup_alert'] = True
+            
+        # Get trigger flash state
+        trigger_flash = redis_client.get('trigger:flash')
+        if trigger_flash:
+            state['trigger_flash'] = True
+            
+        # Get monitor flash state
+        monitor_flash = redis_client.get('monitor:flash')
+        if monitor_flash:
+            state['monitor_flash'] = True
             
     except Exception as e:
         print(f"Error reading world state: {e}")

@@ -26,6 +26,8 @@ let animationFrame = null;
 let socket = null;
 let binFlashTime = 0;
 let missedPickupTime = 0;  // Track when a missed pickup was detected
+let triggerFlashTime = 0;  // Track when trigger line should flash
+let monitorFlashTime = 0;  // Track when monitor line should flash
 
 // Object type colors
 const OBJECT_COLORS = {
@@ -55,12 +57,24 @@ function initSocket() {
         if (state.bin_flash) {
             binFlashTime = Date.now();
         }
+        if (state.trigger_flash) {
+            triggerFlashTime = Date.now();
+        }
+        if (state.monitor_flash) {
+            monitorFlashTime = Date.now();
+        }
     });
     
         socket.on('world_update', (state) => {
         worldState = state;
         if (state.bin_flash) {
             binFlashTime = Date.now();
+        }
+        if (state.trigger_flash) {
+            triggerFlashTime = Date.now();
+        }
+        if (state.monitor_flash) {
+            monitorFlashTime = Date.now();
         }
         if (state.missed_pickup_alert) {
             missedPickupTime = Date.now();
@@ -111,14 +125,29 @@ function drawConveyor() {
     ctx.lineTo(visionX, 250);
     ctx.stroke();
     
-    // Trigger zone line at 300mm = 600px (purple)
+    // Trigger zone line at 250mm = 500px (purple, flashes yellow)
     const triggerX = mmToPixels(CONFIG.trigger_zone);
-    ctx.strokeStyle = '#9C27B0';  // Purple for trigger
-    ctx.lineWidth = 2;
+    const isTriggerFlashing = (Date.now() - triggerFlashTime) < 500; // Flash for 0.5 seconds
+    
+    if (isTriggerFlashing) {
+        // Flash yellow when green object detected
+        ctx.strokeStyle = '#FFFF00';  // Bright yellow
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'yellow';
+    } else {
+        ctx.strokeStyle = '#9C27B0';  // Purple for trigger
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 0;
+    }
+    
     ctx.beginPath();
     ctx.moveTo(triggerX, 50);
     ctx.lineTo(triggerX, 250);
     ctx.stroke();
+    
+    // Reset shadow
+    ctx.shadowBlur = 0;
     
     // Pickup zone at 375-425mm = 750-850px (shaded area)
     ctx.strokeStyle = '#666';
@@ -139,12 +168,13 @@ function drawConveyor() {
     ctx.stroke();
     
     // Post-pick monitor line at 475mm = 950px
-    // Flash RED if a missed pickup was detected recently
+    // Flash RED if a missed pickup was detected recently, YELLOW for motion detection
     const postPickX = mmToPixels(CONFIG.post_pick_zone);
     const isFlashingRed = (Date.now() - missedPickupTime) < 2000; // Flash for 2 seconds
+    const isFlashingYellow = (Date.now() - monitorFlashTime) < 500; // Flash for 0.5 seconds
     
     if (isFlashingRed) {
-        // Pulse effect for missed pickup
+        // Pulse effect for missed pickup (RED takes priority)
         const flashIntensity = Math.sin((Date.now() - missedPickupTime) * 0.01) * 0.5 + 0.5;
         ctx.strokeStyle = `rgba(255, 0, 0, ${0.5 + flashIntensity * 0.5})`;
         ctx.lineWidth = 3 + flashIntensity * 2;
@@ -152,6 +182,12 @@ function drawConveyor() {
         // Draw red glow effect
         ctx.shadowBlur = 10;
         ctx.shadowColor = 'red';
+    } else if (isFlashingYellow) {
+        // Flash yellow for motion detection
+        ctx.strokeStyle = '#FFFF00';  // Bright yellow
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'yellow';
     } else {
         ctx.strokeStyle = '#666';
         ctx.lineWidth = 1;
@@ -243,9 +279,22 @@ function drawCNC() {
     // CNC arm (brown square) positioned above belt
     ctx.fillStyle = '#8B4513';
     ctx.fillRect(x - size/2, 20 - size/2, size, size);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    
+    // Add yellow outline when CNC is activated (not idle)
+    if (worldState.cnc.status !== 'idle') {
+        ctx.strokeStyle = '#FFFF00';  // Bright yellow
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = 'yellow';
+    } else {
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 0;
+    }
     ctx.strokeRect(x - size/2, 20 - size/2, size, size);
+    
+    // Reset shadow
+    ctx.shadowBlur = 0;
     
     // Show status text
     ctx.fillStyle = '#666';
@@ -268,8 +317,8 @@ function drawCNC() {
 
 // Draw collection bin
 function drawBin() {
-    // Bin positioned at center of pickup zone (400mm = 800px)
-    const binX = mmToPixels(400);
+    // Bin positioned at center of pickup zone (337.5mm = 675px)
+    const binX = mmToPixels(337.5);
     const binY = 270;
     const binWidth = 60;
     const binHeight = 25;
