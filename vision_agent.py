@@ -9,6 +9,8 @@ import time
 import json
 import threading
 import logging
+import signal
+from contextlib import contextmanager
 
 # Configure logging
 logging.basicConfig(
@@ -26,10 +28,16 @@ r_pubsub = r.pubsub()
 VISION_LINE = 50  # mm - detection line position
 DETECTION_MEMORY_SECONDS = 2  # Remember detected objects for 2 seconds
 CHECK_INTERVAL = 0.05  # 20Hz checking rate for accurate detection
+REDIS_TIMEOUT = 2.0  # Timeout for Redis operations
+MAX_CONSECUTIVE_FAILURES = 5  # Max Redis failures before restart
+HEALTH_CHECK_INTERVAL = 10.0  # Health check every 10 seconds
 
 # State management
 detected_objects = {}  # Track recently detected objects {obj_id: timestamp}
 detection_lock = threading.Lock()
+redis_failure_count = 0
+last_health_check = time.time()
+agent_state = 'starting'  # starting, running, error, recovering
 
 def cleanup_old_detections():
     """Remove old detections from memory after DETECTION_MEMORY_SECONDS"""
