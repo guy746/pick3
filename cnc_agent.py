@@ -42,7 +42,8 @@ def update_cnc_state(status, position=None):
         'status': status,
         'has_object': 'true' if status in ['picking', 'moving_to_bin'] else 'false'
     }
-    r.hset(CNC_ID, mapping=cnc_data)
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.hset(CNC_ID, mapping=cnc_data)  # UNCOMMENT for normal operation
 
 def publish_ready():
     """Publish ready for assignment event"""
@@ -54,7 +55,8 @@ def publish_ready():
             'position': current_position['x']
         }
     }
-    r.publish('events:cnc', json.dumps(event))
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.publish('events:cnc', json.dumps(event))  # UNCOMMENT for normal operation
     print(f"[CNC] Published ready_for_assignment")
 
 def request_trigger_watch(obj_id, lane):
@@ -79,7 +81,8 @@ def request_trigger_watch(obj_id, lane):
         }
     }
     
-    r.publish('events:trigger', json.dumps(event))
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.publish('events:trigger', json.dumps(event))  # UNCOMMENT for normal operation
     print(f"[CNC] Requested trigger watch for {obj_id} in lane {lane} (timeout: {timeout:.1f}s)")
 
 def execute_gcode_routine(routine_name, lane=None, pickup_x=None):
@@ -191,7 +194,8 @@ def handle_trigger_notification(trigger_data):
     # Execute pickup
     update_cnc_state('picking')
     # Set object status to 'picking' to stop belt animation
-    r.hset(f'object:{obj_id}', 'status', 'picking')
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.hset(f'object:{obj_id}', 'status', 'picking')  # UNCOMMENT for normal operation
     execute_gcode_routine('pickup')
     
     # Publish pickup event - let app.py handle object removal
@@ -203,7 +207,8 @@ def handle_trigger_notification(trigger_data):
             'object_id': obj_id
         }
     }
-    r.publish('events:cnc', json.dumps(pickup_event))
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.publish('events:cnc', json.dumps(pickup_event))  # UNCOMMENT for normal operation
     print(f"[CNC] Picked up {obj_id}")
     
     # Deliver to bin
@@ -211,7 +216,8 @@ def handle_trigger_notification(trigger_data):
     execute_gcode_routine('deliver')
     
     # Flash bin to indicate drop
-    r.setex('bin:0:flash', 1, 'true')
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # r.setex('bin:0:flash', 1, 'true')  # UNCOMMENT for normal operation
     
     # Return home
     update_cnc_state('returning_home')

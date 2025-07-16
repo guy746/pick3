@@ -173,8 +173,8 @@ def get_world_state():
         bin_flash = redis_client.get('bin:0:flash')
         if bin_flash:
             state['bin_flash'] = True
-            # Auto-clear flash after reading
-            redis_client.delete('bin:0:flash')
+            # READ-ONLY MODE: Comment out Redis writes for debugging
+            # redis_client.delete('bin:0:flash')  # UNCOMMENT for normal operation
             
         # Get missed pickup alert
         missed_alert = redis_client.get('missed_pickup:alert')
@@ -281,8 +281,9 @@ def event_listener():
                         
                         # If it's a green object, add yellow ring
                         if obj_type == 'green' and obj_id:
-                            redis_client.hset(f'object:{obj_id}', 'has_ring', 'true')
-                            redis_client.hset(f'object:{obj_id}', 'ring_color', 'yellow')
+                            # READ-ONLY MODE: Comment out Redis writes for debugging
+                            # redis_client.hset(f'object:{obj_id}', 'has_ring', 'true')  # UNCOMMENT for normal operation
+                            # redis_client.hset(f'object:{obj_id}', 'ring_color', 'yellow')  # UNCOMMENT for normal operation
                             add_status_message('vision', f"Added yellow ring to pickable object {obj_id}")
                             print(f"Vision: Added yellow ring to {obj_id}")
                     
@@ -295,7 +296,8 @@ def event_listener():
                         
                         if lane is not None:
                             # Store lane number for CNC display
-                            redis_client.set('cnc:assigned_lane', str(lane))
+                            # READ-ONLY MODE: Comment out Redis writes for debugging
+                            # redis_client.set('cnc:assigned_lane', str(lane))  # UNCOMMENT for normal operation
                             add_status_message('cnc', f"Assigned to pickup {obj_id} from lane {lane}")
                             print(f"CNC: Assigned lane {lane} displayed on CNC icon")
                     
@@ -312,9 +314,17 @@ def event_listener():
                         cnc_id = pickup_data.get('cnc_id', 'cnc:0')
                         
                         if obj_id:
+                            # READ-ONLY MODE: Comment out Redis writes for debugging
                             # Remove object from belt (objects:active and object hash)
-                            redis_client.zrem('objects:active', obj_id)
-                            redis_client.delete(f'object:{obj_id}')
+                            # redis_client.zrem('objects:active', obj_id)  # UNCOMMENT for normal operation
+                            # redis_client.delete(f'object:{obj_id}')  # UNCOMMENT for normal operation
+                            
+                            # Clear confirmed target if this was the assigned object
+                            confirmed_target = redis_client.get('scoring:confirmed_target')
+                            if confirmed_target and confirmed_target.startswith(f'{obj_id}:'):
+                                # redis_client.delete('scoring:confirmed_target')  # UNCOMMENT for normal operation
+                                print(f"App: Cleared confirmed target for picked object {obj_id}")
+                            
                             add_status_message('cnc', f"Picked up object {obj_id}")
                             print(f"App: Removed picked object {obj_id} from belt")
                     
@@ -326,7 +336,8 @@ def event_listener():
                         position = trigger_data.get('current_position')
                         
                         # Flash trigger line yellow when object detected at trigger line
-                        redis_client.setex('trigger:flash', 1, 'true')
+                        # READ-ONLY MODE: Comment out Redis writes for debugging
+                        # redis_client.setex('trigger:flash', 1, 'true')  # UNCOMMENT for normal operation
                         add_status_message('trigger', f"Object {obj_id} approaching in lane {lane} at {position}mm")
                     
                     # Handle scoring agent target confirmation events
@@ -337,7 +348,8 @@ def event_listener():
                         
                         if object_id and lane is not None:
                             # Store confirmation for top screen display
-                            redis_client.set('scoring:confirmed_target', f"{object_id}:{lane}")
+                            # READ-ONLY MODE: Comment out Redis writes for debugging
+                            # redis_client.set('scoring:confirmed_target', f"{object_id}:{lane}")  # UNCOMMENT for normal operation
                             add_status_message('scoring', f"Confirmed target {object_id} in lane {lane}")
                             print(f"Scoring: Confirmed target {object_id} in lane {lane}")
                     
@@ -350,8 +362,9 @@ def event_listener():
                             add_status_message('trigger', f"Object {obj_id} approaching in lane {lane}")
                         elif event_type in ['pick_operation_start', 'pick_operation_complete']:
                             # Remove lane number display when pick operation occurs
-                            redis_client.delete('cnc:assigned_lane')
-                            redis_client.delete('scoring:confirmed_target')
+                            # READ-ONLY MODE: Comment out Redis writes for debugging
+                            # redis_client.delete('cnc:assigned_lane')  # UNCOMMENT for normal operation
+                            # redis_client.delete('scoring:confirmed_target')  # UNCOMMENT for normal operation
                             add_status_message('trigger', f"Pick operation {event_type.replace('_', ' ')}")
                             print(f"CNC: Removed lane display - pick operation {event_type}")
                         elif event_type == 'watch_for_object':
@@ -391,7 +404,9 @@ def start_background_threads():
 @socketio.on('clear_missed_alert')
 def handle_clear_missed_alert():
     """Clear the missed pickup alert"""
-    redis_client.delete('missed_pickup:alert')
+    # READ-ONLY MODE: Comment out Redis writes for debugging
+    # redis_client.delete('missed_pickup:alert')  # UNCOMMENT for normal operation
+    pass
 
 # Start background threads when app is imported (for Gunicorn)
 start_background_threads()

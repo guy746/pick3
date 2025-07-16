@@ -115,6 +115,15 @@ function updateStatus() {
     document.getElementById('object-count').textContent = `Objects: ${objectCount}`;
     document.getElementById('cnc-status').textContent = `CNC: ${worldState.cnc?.status || 'Unknown'}`;
     
+    // Update confirmed target status
+    const confirmedTargetElement = document.getElementById('confirmed-target-status');
+    if (worldState.confirmed_target) {
+        const { object_id, lane } = worldState.confirmed_target;
+        confirmedTargetElement.textContent = `Confirmed: ${object_id} Lane ${lane}`;
+    } else {
+        confirmedTargetElement.textContent = 'Confirmed: None';
+    }
+    
     // Update scoring status with lane assignment (with 2-second persistence)
     const assignedLane = worldState.cnc?.assigned_lane;
     
@@ -718,29 +727,6 @@ function drawBin() {
     ctx.textAlign = 'start';
 }
 
-// Draw confirmed target display at top of screen
-function drawConfirmedTarget() {
-    if (worldState.confirmed_target) {
-        const { object_id, lane } = worldState.confirmed_target;
-        
-        // Draw background rectangle
-        ctx.fillStyle = 'rgba(0, 100, 0, 0.8)';  // Dark green background
-        ctx.fillRect(10, 10, 200, 30);
-        
-        // Draw border
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(10, 10, 200, 30);
-        
-        // Draw text
-        ctx.fillStyle = '#fff';  // White text
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Confirmed: ${object_id} Lane ${lane}`, 15, 30);
-        
-        ctx.textAlign = 'start';
-    }
-}
 
 // Main render loop
 function render() {
@@ -762,9 +748,6 @@ function render() {
     
     // Draw CNC
     drawCNC();
-    
-    // Draw top screen confirmed target display
-    drawConfirmedTarget();
     
     // Draw robot arm tracking icon (on top of everything)
     drawRobotArm();

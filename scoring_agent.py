@@ -106,12 +106,17 @@ class ScoringAgent(BaseAgent):
                     
                 current_position = float(obj_data)
                 
-                # Check if object is pickable (green objects or objects in pickup zone)
+                # Check if object is pickable and has enough setup time (not past 200mm)
                 is_pickable = False
+                if current_position > 200:
+                    # Object is too close to pickup zone - insufficient setup time
+                    self.logger.debug(f"Skipping {obj_id} at {current_position:.1f}mm - too close (>200mm)")
+                    continue
+                
                 if tracked_data.get('type') == 'green':
-                    is_pickable = True  # Green objects are always pickable
+                    is_pickable = True  # Green objects are always pickable (if not too close)
                 elif self.pickup_zone_start <= current_position <= self.pickup_zone_end:
-                    is_pickable = True  # Objects in pickup zone are pickable
+                    is_pickable = True  # Objects in pickup zone are pickable (if not too close)
                 
                 # LIFO: Select the object with the most recent timestamp (detected last = furthest from pickup)
                 if is_pickable and tracked_data['timestamp'] > most_recent_timestamp:
