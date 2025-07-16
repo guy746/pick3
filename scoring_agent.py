@@ -50,19 +50,6 @@ class ScoringAgent(BaseAgent):
                     'type': obj_type
                 }
             self.logger.info(f"Tracking green object {obj_id} at {obj_data.get('position_x', 0)}mm")
-            
-            # Publish confirmation event for valid green target
-            confirmation = {
-                'event': 'target_confirmed',
-                'timestamp': time.time(),
-                'data': {
-                    'object_id': obj_id,
-                    'lane': obj_data.get('lane', 0),
-                    'position_x': obj_data.get('position_x', 0)
-                }
-            }
-            self.redis.publish('events:scoring', json.dumps(confirmation))
-            self.logger.info(f"Confirmed target {obj_id} in lane {obj_data.get('lane', 0)}")
     
     def handle_cnc_ready(self, event_data):
         """Handle CNC ready for assignment event"""
@@ -84,6 +71,19 @@ class ScoringAgent(BaseAgent):
             self.redis.publish('events:cnc', json.dumps(assignment))
             self.logger.debug(f"Published assignment event: {assignment}")
             self.logger.info(f"Assigned {best_object['id']} to {cnc_id} (LIFO: timestamp {best_object['timestamp']:.3f})")
+            
+            # Publish target confirmation for assigned object only
+            confirmation = {
+                'event': 'target_confirmed',
+                'timestamp': time.time(),
+                'data': {
+                    'object_id': best_object['id'],
+                    'lane': best_object['lane'],
+                    'position_x': best_object['position']
+                }
+            }
+            self.redis.publish('events:scoring', json.dumps(confirmation))
+            self.logger.info(f"Confirmed target {best_object['id']} in lane {best_object['lane']}")
             
             with self.lock:
                 self.tracked_objects.clear()

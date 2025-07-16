@@ -38,6 +38,8 @@ def publish_monitor_event(obj_id, obj_data, position, velocity):
     }
     
     r.publish('events:monitor', json.dumps(event))
+    # Flash monitor line yellow to indicate potential missed pickup
+    r.setex('monitor:flash', 1, 'true')
     print(f"[PostPickMonitor] Green object {obj_id} detected at {position:.1f}mm")
 
 def calculate_velocity(obj_id, current_pos, last_pos, time_delta):

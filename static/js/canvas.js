@@ -31,6 +31,15 @@ let monitorFlashTime = 0;  // Track when monitor line should flash
 let scoringLaneInfo = null;  // Store scoring lane info with timestamp
 let scoringDisplayTimeout = null;  // Timeout for clearing scoring display
 
+// Robot arm animation state
+let robotArm = {
+    currentX: 600,  // Start at pickup zone edge (300mm)
+    currentY: 150,  // Center of belt
+    targetX: 600,
+    targetY: 150,
+    animationSpeed: 0.15  // Interpolation speed (0.1 = slow, 0.3 = fast)
+};
+
 // Object type colors
 const OBJECT_COLORS = {
     'green': '#4CAF50',
@@ -475,6 +484,25 @@ function drawObject(obj) {
         ctx.stroke();
     }
     
+    // Draw red checkmark if this object is assigned to CNC
+    if (worldState.confirmed_target && worldState.confirmed_target.object_id === obj.id) {
+        ctx.strokeStyle = '#FF0000'; // Red color
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        
+        // Draw checkmark (two lines forming a check)
+        ctx.beginPath();
+        // Short line (bottom left to middle)
+        ctx.moveTo(x - 6, y);
+        ctx.lineTo(x - 2, y + 4);
+        // Long line (middle to top right)
+        ctx.moveTo(x - 2, y + 4);
+        ctx.lineTo(x + 6, y - 4);
+        ctx.stroke();
+        
+        ctx.lineCap = 'butt'; // Reset line cap
+    }
+    
     // Debug: show position (remove in production)
     ctx.fillStyle = '#fff';
     ctx.font = '8px Arial';
@@ -544,6 +572,124 @@ function drawCNC() {
         ctx.lineWidth = 1;
         ctx.stroke();
     }
+}
+
+// Draw robot arm icon that tracks operational locations
+function drawRobotArm() {
+    if (!worldState.cnc) return;
+    
+    let newTargetX, newTargetY;
+    const armSize = 40; // Increased size for visibility
+    
+    // Determine target position based on CNC status and assigned lane
+    switch (worldState.cnc.status) {
+        case 'preparing':
+        case 'waiting_for_trigger':
+            // Show at assigned lane position
+            if (worldState.cnc.assigned_lane !== undefined) {
+                newTargetX = mmToPixels(337.5); // Pickup zone center
+                const laneHeight = 200 / CONFIG.lanes;
+                newTargetY = 50 + (worldState.cnc.assigned_lane * laneHeight) + (laneHeight / 2);
+            } else {
+                newTargetX = mmToPixels(337.5);
+                newTargetY = 150; // Center
+            }
+            break;
+            
+        case 'picking':
+            // Show at pickup location (assigned lane)
+            if (worldState.cnc.assigned_lane !== undefined) {
+                newTargetX = mmToPixels(337.5);
+                const laneHeight = 200 / CONFIG.lanes;
+                newTargetY = 50 + (worldState.cnc.assigned_lane * laneHeight) + (laneHeight / 2);
+            } else {
+                newTargetX = mmToPixels(337.5);
+                newTargetY = 150;
+            }
+            break;
+            
+        case 'moving_to_bin':
+            // Show at bin location
+            newTargetX = mmToPixels(337.5);
+            newTargetY = 270; // Bin area
+            break;
+            
+        case 'returning_home':
+            // Show returning to home position at pickup zone start, center of belt
+            newTargetX = mmToPixels(300); // At pickup zone start (first pickup line)
+            newTargetY = 150; // Center of belt
+            break;
+            
+        case 'idle':
+        default:
+            // Show at ready position at pickup zone start, center of belt
+            newTargetX = mmToPixels(300); // At pickup zone start (first pickup line)
+            newTargetY = 150; // Center of belt
+            break;
+    }
+    
+    // Update target position
+    robotArm.targetX = newTargetX;
+    robotArm.targetY = newTargetY;
+    
+    // Smooth interpolation to target position
+    robotArm.currentX += (robotArm.targetX - robotArm.currentX) * robotArm.animationSpeed;
+    robotArm.currentY += (robotArm.targetY - robotArm.currentY) * robotArm.animationSpeed;
+    
+    // Use current position for drawing
+    const targetX = robotArm.currentX;
+    const targetY = robotArm.currentY;
+    
+    // Draw robot arm claw icon
+    ctx.save();
+    
+    // Main arm body
+    ctx.fillStyle = '#000000'; // Black for high contrast
+    ctx.strokeStyle = '#FFFFFF'; // White border
+    ctx.lineWidth = 3;
+    
+    // Draw arm base (rectangular)
+    ctx.fillRect(targetX - armSize/2, targetY - armSize/2, armSize, armSize/2);
+    ctx.strokeRect(targetX - armSize/2, targetY - armSize/2, armSize, armSize/2);
+    
+    // Draw claw parts (two small rectangles)
+    const clawSize = 8; // Larger claw
+    ctx.fillStyle = '#FF0000'; // Bright red for claw
+    
+    // Left claw
+    ctx.fillRect(targetX - clawSize - 2, targetY, clawSize, 4);
+    ctx.strokeRect(targetX - clawSize - 2, targetY, clawSize, 4);
+    
+    // Right claw
+    ctx.fillRect(targetX + 2, targetY, clawSize, 4);
+    ctx.strokeRect(targetX + 2, targetY, clawSize, 4);
+    
+    // Add status-based effects
+    if (worldState.cnc.status === 'picking') {
+        // Highlight when picking
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#E74C3C';
+        ctx.strokeStyle = '#E74C3C';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(targetX - armSize/2 - 2, targetY - armSize/2 - 2, armSize + 4, armSize/2 + 4);
+    } else if (worldState.cnc.status !== 'idle') {
+        // Subtle glow when active
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = '#3498DB';
+    }
+    
+    // Show carried object
+    if (worldState.cnc.has_object) {
+        ctx.beginPath();
+        ctx.arc(targetX, targetY + armSize/2 + 5, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = OBJECT_COLORS.green;
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+    
+    ctx.restore();
 }
 
 // Draw collection bin
@@ -619,6 +765,9 @@ function render() {
     
     // Draw top screen confirmed target display
     drawConfirmedTarget();
+    
+    // Draw robot arm tracking icon (on top of everything)
+    drawRobotArm();
     
     // Continue animation
     animationFrame = requestAnimationFrame(render);

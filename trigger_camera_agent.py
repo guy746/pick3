@@ -8,6 +8,7 @@ import redis
 import time
 import json
 import threading
+import logging
 from datetime import datetime, timedelta
 
 # Redis connection - using localhost with host networking
@@ -65,12 +66,11 @@ def publish_trigger_event(obj_id, position, lane, velocity):
     r.publish('events:trigger', json.dumps(event))
     
     # Detailed trace logging
-    logging.debug(f"Published trigger event: {event}")
+    print(f"[TriggerCamera] Published trigger event: {event}")
     print(f"[TriggerCamera] Triggered: {obj_id} at {position:.1f}mm, ETA: {eta:.3f}s")
 
 def monitor_trigger_line():
-    """Monitor specific lanes for watched objects"""
-    last_positions = {}  # Track last known positions
+    """Monitor specific lanes for watched objects - SIMULATION MODE: 100% detection"""
     
     while True:
         start_time = time.time()
@@ -85,41 +85,34 @@ def monitor_trigger_line():
                 time.sleep(CHECK_INTERVAL)
                 continue
             
-            # Get lanes to monitor
-            lanes_to_monitor = set(watch['lane'] for watch in watch_list.values())
+            # Copy watch list for processing
+            current_watches = dict(watch_list)
         
         # Track objects to remove after iteration
         objects_to_remove = []
         
-        # Check each monitored lane
-        for lane in lanes_to_monitor:
-            # Get objects in this lane near trigger line
-            # In practice, would query objects by lane and position range
-            active_objects = r.zrangebyscore('objects:active', 
-                                            TRIGGER_LINE - 20,  # Look ahead
-                                            TRIGGER_LINE + 5,   # Small buffer past line
-                                            withscores=True)
+        # SIMULATION MODE: Always detect watched objects that exist
+        for obj_id, watch_data in current_watches.items():
+            lane = watch_data['lane']
             
-            for obj_id, position in active_objects:
-                # Check if object is in correct lane
+            # Check if object exists and get its position
+            obj_exists = r.exists(f'object:{obj_id}')
+            if obj_exists:
+                obj_position = r.zscore('objects:active', obj_id)
                 obj_lane = r.hget(f'object:{obj_id}', 'lane')
-                if obj_lane and int(obj_lane) == lane:
-                    # Check if this object is being watched
-                    with watch_lock:
-                        if obj_id in watch_list:
-                            # Check if object just crossed trigger line
-                            last_pos = last_positions.get(obj_id, 0)
-                            
-                            if last_pos < TRIGGER_LINE <= position:
-                                # Object just crossed trigger line!
-                                velocity = calculate_object_velocity(obj_id, position)
-                                publish_trigger_event(obj_id, position, lane, velocity)
-                                
-                                # Mark for removal from watch list after triggering
-                                objects_to_remove.append(obj_id)
-                    
-                    # Update last known position
-                    last_positions[obj_id] = position
+                
+                if obj_position is not None and obj_lane and int(obj_lane) == lane:
+                    # SIMULATION: Always trigger when object is at or past trigger line
+                    if obj_position >= TRIGGER_LINE:
+                        print(f"[TriggerCamera] SIMULATION: Force detecting {obj_id} at {obj_position:.1f}mm in lane {lane}")
+                        
+                        velocity = calculate_object_velocity(obj_id, obj_position)
+                        publish_trigger_event(obj_id, obj_position, lane, velocity)
+                        
+                        # Mark for removal from watch list after triggering
+                        objects_to_remove.append(obj_id)
+                    else:
+                        print(f"[TriggerCamera] SIMULATION: Watching {obj_id} at {obj_position:.1f}mm (waiting for {TRIGGER_LINE}mm)")
         
         # Remove triggered objects from watch list
         if objects_to_remove:
@@ -128,11 +121,6 @@ def monitor_trigger_line():
                     if obj_id in watch_list:
                         del watch_list[obj_id]
                         print(f"[TriggerCamera] Removed {obj_id} from watch list (triggered)")
-        
-        # Clean up positions for objects no longer active
-        active_ids = set(obj_id for obj_id, _ in r.zrange('objects:active', 0, -1, withscores=True))
-        new_last_positions = {k: v for k, v in last_positions.items() if k in active_ids}
-        last_positions = new_last_positions
         
         # Sleep to maintain check rate
         elapsed = time.time() - start_time
@@ -170,14 +158,14 @@ def event_listener():
         if message['type'] == 'message':
             try:
                 event = json.loads(message['data'])
-                logging.debug(f"Received event: {event}")
+                print(f"[TriggerCamera] Received event: {event}")
                 event_type = event.get('event')
                 
                 if event_type == 'watch_for_object':
                     handle_watch_request(event)
                     
             except Exception as e:
-                logging.error(f"Error handling event: {e}")
+                print(f"[TriggerCamera] Error handling event: {e}")
                 print(f"[TriggerCamera] Error handling event: {e}")
 
 def status_reporter():
@@ -193,6 +181,8 @@ def status_reporter():
 
 def main():
     """Main entry point for trigger camera agent"""
+    # Logging configured to use print statements for debugging
+    
     print("Trigger Camera Agent starting...")
     print(f"Monitoring trigger line at {TRIGGER_LINE}mm")
     print(f"Check rate: {1/CHECK_INTERVAL:.1f}Hz")

@@ -7,8 +7,9 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 from datetime import datetime
 
-# Note: This application runs with Gunicorn + eventlet worker, not Flask's built-in server
-# Command: gunicorn --worker-class eventlet -w 1 app:app
+# Note: This application is managed by Supervisor service manager
+# Services: pick1_webapp, pick1_cnc, pick1_vision, pick1_trigger, pick1_scoring, pick1_monitor, pick1_test_data, pick1_redis
+# Use: sudo supervisorctl status|start|stop|restart pick1:service_name
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -238,8 +239,8 @@ def update_loop():
                     socketio.emit('world_update', current_state)
                     print(f"DEBUG: Force broadcasted world_update to {len(connected_clients)} clients")
                 
-            # Update at ~5Hz
-            time.sleep(0.2)
+            # Update at ~10Hz for smoother animation
+            time.sleep(0.1)
             
         except Exception as e:
             print(f"Error in update loop: {e}")
@@ -303,6 +304,30 @@ def event_listener():
                         cnc_data = data.get('data', {})
                         cnc_id = cnc_data.get('cnc_id', 'cnc:0')
                         add_status_message('cnc', f"Ready for new assignment")
+                    
+                    # Handle CNC pickup events - remove object from belt
+                    elif message['channel'] == 'events:cnc' and event_type == 'object_picked':
+                        pickup_data = data.get('data', {})
+                        obj_id = pickup_data.get('object_id')
+                        cnc_id = pickup_data.get('cnc_id', 'cnc:0')
+                        
+                        if obj_id:
+                            # Remove object from belt (objects:active and object hash)
+                            redis_client.zrem('objects:active', obj_id)
+                            redis_client.delete(f'object:{obj_id}')
+                            add_status_message('cnc', f"Picked up object {obj_id}")
+                            print(f"App: Removed picked object {obj_id} from belt")
+                    
+                    # Handle trigger camera events - flash trigger line when object approaches
+                    elif message['channel'] == 'events:trigger' and event_type == 'object_approaching':
+                        trigger_data = data.get('data', {})
+                        obj_id = trigger_data.get('object_id')
+                        lane = trigger_data.get('lane')
+                        position = trigger_data.get('current_position')
+                        
+                        # Flash trigger line yellow when object detected at trigger line
+                        redis_client.setex('trigger:flash', 1, 'true')
+                        add_status_message('trigger', f"Object {obj_id} approaching in lane {lane} at {position}mm")
                     
                     # Handle scoring agent target confirmation events
                     elif message['channel'] == 'events:scoring' and event_type == 'target_confirmed':

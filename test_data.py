@@ -74,8 +74,8 @@ def setup_cnc():
 
 def animate_objects():
     """Animate objects moving along belt"""
-    belt_speed = 133.33  # mm/sec (matches architecture docs)
-    update_interval = 0.1  # 10Hz for smoother movement
+    belt_speed = 50.0  # mm/sec (slowed down from 133.33)
+    update_interval = 0.05  # 20Hz for smoother movement (was 10Hz)
     
     while True:
         start_time = time.time()
@@ -118,8 +118,8 @@ def spawn_objects():
     weights = [0.4, 0.15, 0.15, 0.15, 0.15]  # 40% green
     
     while True:
-        # Longer spawn interval to reduce race conditions
-        time.sleep(random.uniform(3.0, 5.0))
+        # Increased spawn rate for more objects
+        time.sleep(random.uniform(1.0, 2.0))
         
         # Create new object
         obj_id = f'obj_{obj_counter:04d}'

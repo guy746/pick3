@@ -124,7 +124,8 @@ def handle_pickup_assignment(assignment_data):
             'lane': lane,
             'position': position,
             'status': 'preparing',
-            'start_time': time.time()
+            'start_time': time.time(),
+            'trigger_timeout': time.time() + 5.0  # 5-second timeout for trigger message
         }
     
     logging.info(f"Received assignment for {obj_id} in lane {lane} at {position}mm")
@@ -174,6 +175,8 @@ def handle_trigger_notification(trigger_data):
             return
         
         current_assignment['status'] = 'executing'
+        # Clear trigger timeout since we received the trigger message
+        current_assignment.pop('trigger_timeout', None)
     
     # Calculate timing
     wait_time, pickup_x = calculate_pickup_timing(trigger_data)
@@ -187,11 +190,20 @@ def handle_trigger_notification(trigger_data):
     
     # Execute pickup
     update_cnc_state('picking')
+    # Set object status to 'picking' to stop belt animation
+    r.hset(f'object:{obj_id}', 'status', 'picking')
     execute_gcode_routine('pickup')
     
-    # Mark object as picked (remove from belt)
-    r.zrem('objects:active', obj_id)
-    r.delete(f'object:{obj_id}')
+    # Publish pickup event - let app.py handle object removal
+    pickup_event = {
+        'event': 'object_picked',
+        'timestamp': time.time(),
+        'data': {
+            'cnc_id': CNC_ID,
+            'object_id': obj_id
+        }
+    }
+    r.publish('events:cnc', json.dumps(pickup_event))
     print(f"[CNC] Picked up {obj_id}")
     
     # Deliver to bin
@@ -290,24 +302,48 @@ def main():
         while True:
             current_time = time.time()
             
-            # Check for assignment timeout
+            # Check for assignment timeout and trigger timeout
             with assignment_lock:
-                if (current_assignment and 
-                    current_assignment.get('status') == 'waiting_for_trigger' and
-                    current_time - current_assignment.get('start_time', 0) > 10.0):  # 10 second timeout
+                if current_assignment:
+                    # Check for overall assignment timeout (10 seconds)
+                    if (current_assignment.get('status') == 'waiting_for_trigger' and
+                        current_time - current_assignment.get('start_time', 0) > 10.0):
+                        
+                        print(f"[CNC] Assignment timeout for {current_assignment.get('object_id')} - resetting to idle")
+                        current_assignment = None
+                        update_cnc_state('idle', HOME_POSITION)
+                        
+                        # Clear lane assignment in Redis
+                        r.delete('cnc:assigned_lane')
+                        r.delete('scoring:confirmed_target')
+                        
+                        # Publish ready for next assignment
+                        time.sleep(1.0)
+                        publish_ready()
+                        last_ready_time = current_time
                     
-                    print(f"[CNC] Assignment timeout for {current_assignment.get('object_id')} - resetting to idle")
-                    current_assignment = None
-                    update_cnc_state('idle', HOME_POSITION)
-                    
-                    # Clear lane assignment in Redis
-                    r.delete('cnc:assigned_lane')
-                    r.delete('scoring:confirmed_target')
-                    
-                    # Publish ready for next assignment
-                    time.sleep(1.0)
-                    publish_ready()
-                    last_ready_time = current_time
+                    # Check for trigger message timeout (5 seconds)
+                    elif (current_assignment.get('status') == 'waiting_for_trigger' and
+                          current_time > current_assignment.get('trigger_timeout', 0)):
+                        
+                        print(f"[CNC] Trigger timeout for {current_assignment.get('object_id')} - resetting to ready position")
+                        
+                        # Return to home position
+                        execute_gcode_routine('home')
+                        current_position.update(HOME_POSITION)
+                        
+                        # Clear assignment and reset to idle
+                        current_assignment = None
+                        update_cnc_state('idle', HOME_POSITION)
+                        
+                        # Clear lane assignment in Redis
+                        r.delete('cnc:assigned_lane')
+                        r.delete('scoring:confirmed_target')
+                        
+                        # Publish ready for next assignment
+                        time.sleep(1.0)
+                        publish_ready()
+                        last_ready_time = current_time
                 
                 # Periodically announce ready when idle and no assignment
                 elif (current_assignment is None and 
