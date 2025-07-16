@@ -1,0 +1,260 @@
+# GRBL G-code Routes Configuration for FoxAlien 3S
+# Coordinates are in millimeters, feed rates in mm/min
+
+# Machine configuration
+machine:
+  name: "FoxAlien 3S"
+  workspace:
+    x_max: 400
+    y_max: 400
+    z_max: 0
+    z_min: -100
+  safe_z: -10  # Safe Z height for rapid moves
+  pickup_z: -85  # Z depth for pickup
+  
+# Position definitions
+positions:
+  ready:
+    x: 200
+    y: 200
+    z: -10
+    description: "Home/ready position - center of workspace"
+    
+  lanes:
+    lane_0:
+      x: 337.5
+      y: 50
+      z: -10
+      description: "Lane 0 pickup position"
+    lane_1:
+      x: 337.5
+      y: 150
+      z: -10
+      description: "Lane 1 pickup position"
+    lane_2:
+      x: 337.5
+      y: 250
+      z: -10
+      description: "Lane 2 pickup position"
+    lane_3:
+      x: 337.5
+      y: 350
+      z: -10
+      description: "Lane 3 pickup position"
+      
+  dropoff:
+    x: 50
+    y: 200
+    z: -10
+    description: "Dropoff bin position"
+
+# Feed rates for different operations
+feed_rates:
+  rapid: 5000      # G0 equivalent speed
+  positioning: 3000 # Fast positioning moves
+  pickup: 1000     # Careful pickup movements
+  dropoff: 2000    # Dropoff movements
+  
+# G-code route definitions
+routes:
+  # Move to ready position from anywhere
+  ready:
+    description: "Move to ready/home position"
+    announce_start: "Moving to ready position..."
+    announce_complete: "Ready position reached - system idle"
+    commands:
+      - gcode: "G1"
+        params: "Z{safe_z} F{feed_rates.positioning}"
+        description: "Raise Z to safe height"
+      - gcode: "G1"
+        params: "X{positions.ready.x} Y{positions.ready.y} F{feed_rates.positioning}"
+        description: "Move to ready position"
+      - gcode: "G1"
+        params: "Z{positions.ready.z} F{feed_rates.positioning}"
+        description: "Lower to ready Z height"
+      - gcode: "G4"
+        params: "P200"
+        description: "Dwell 200ms for stabilization"
+
+  # Prepare for pickup - move to specified lane
+  prepare_lane:
+    description: "Position above lane for pickup"
+    announce_start: "Preparing for pickup - moving to lane {lane}..."
+    announce_complete: "Lane {lane} position reached - ready for pickup trigger"
+    parameters:
+      - name: "lane"
+        type: "int"
+        range: [0, 3]
+        description: "Lane number (0-3)"
+    commands:
+      - gcode: "G1"
+        params: "Z{safe_z} F{feed_rates.positioning}"
+        description: "Raise Z to safe height"
+      - gcode: "G1"
+        params: "X{positions.lanes.lane_{lane}.x} Y{positions.lanes.lane_{lane}.y} F{feed_rates.positioning}"
+        description: "Move to lane {lane} position"
+      - gcode: "G1"
+        params: "Z{positions.lanes.lane_{lane}.z} F{feed_rates.positioning}"
+        description: "Lower to pickup ready height"
+      - gcode: "G4"
+        params: "P100"
+        description: "Dwell 100ms for stabilization"
+
+  # Pickup sequence
+  pickup:
+    description: "Execute pickup operation"
+    announce_start: "Executing pickup operation..."
+    announce_complete: "Object picked up successfully - moving to dropoff"
+    parameters:
+      - name: "pickup_x"
+        type: "float"
+        default: 337.5
+        description: "Fine-tuned X position for pickup"
+    commands:
+      - gcode: "M3"
+        params: "S1000"
+        description: "Activate gripper/vacuum"
+      - gcode: "G4"
+        params: "P100"
+        description: "Dwell for gripper activation"
+      - gcode: "G1"
+        params: "X{pickup_x} F{feed_rates.pickup}"
+        description: "Fine position to pickup point"
+      - gcode: "G1"
+        params: "Z{pickup_z} F{feed_rates.pickup}"
+        description: "Descend to pickup depth"
+      - gcode: "G4"
+        params: "P300"
+        description: "Dwell for secure grip"
+      - gcode: "G1"
+        params: "Z{safe_z} F{feed_rates.pickup}"
+        description: "Lift object to safe height"
+      - gcode: "G4"
+        params: "P100"
+        description: "Dwell for lift stabilization"
+
+  # Transport to dropoff
+  transport_to_dropoff:
+    description: "Move object to dropoff bin"
+    announce_start: "Transporting object to dropoff bin..."
+    announce_complete: "Dropoff position reached - preparing to release object"
+    commands:
+      - gcode: "G1"
+        params: "X{positions.dropoff.x} Y{positions.dropoff.y} F{feed_rates.dropoff}"
+        description: "Move to dropoff position"
+      - gcode: "G4"
+        params: "P100"
+        description: "Dwell at dropoff position"
+
+  # Dropoff sequence  
+  dropoff:
+    description: "Release object at dropoff bin"
+    announce_start: "Releasing object at dropoff bin..."
+    announce_complete: "Object successfully dropped off - returning to ready"
+    commands:
+      - gcode: "G1"
+        params: "Z{pickup_z} F{feed_rates.dropoff}"
+        description: "Lower to dropoff height"
+      - gcode: "G4"
+        params: "P200"
+        description: "Dwell before release"
+      - gcode: "M5"
+        params: ""
+        description: "Deactivate gripper/vacuum"
+      - gcode: "G4"
+        params: "P300"
+        description: "Dwell for object release"
+      - gcode: "G1"
+        params: "Z{safe_z} F{feed_rates.dropoff}"
+        description: "Raise to safe height"
+
+# Complete sequences combining multiple routes
+sequences:
+  # Full pickup cycle
+  complete_pickup_cycle:
+    description: "Complete pickup cycle from ready to ready"
+    announce_start: "Starting complete pickup cycle for lane {lane}..."
+    announce_complete: "Pickup cycle completed successfully - system ready for next assignment"
+    parameters:
+      - name: "lane"
+        type: "int"
+        range: [0, 3]
+        description: "Target lane for pickup"
+      - name: "pickup_x"
+        type: "float"
+        default: 337.5
+        description: "Fine-tuned pickup X coordinate"
+    routes:
+      - route: "prepare_lane"
+        params: 
+          lane: "{lane}"
+      - route: "pickup"
+        params:
+          pickup_x: "{pickup_x}"
+      - route: "transport_to_dropoff"
+      - route: "dropoff"
+      - route: "ready"
+
+  # Emergency return to ready
+  emergency_ready:
+    description: "Emergency return to ready position"
+    commands:
+      - gcode: "M5"
+        params: ""
+        description: "Ensure gripper is off"
+      - gcode: "G1"
+        params: "Z{safe_z} F{feed_rates.rapid}"
+        description: "Rapid Z to safe height"
+      - gcode: "G1"
+        params: "X{positions.ready.x} Y{positions.ready.y} F{feed_rates.rapid}"
+        description: "Rapid to ready position"
+      - gcode: "G1"
+        params: "Z{positions.ready.z} F{feed_rates.positioning}"
+        description: "Lower to ready height"
+
+# Timing estimates (in seconds) for planning
+timing:
+  prepare_lane: 2.5
+  pickup: 1.8
+  transport_to_dropoff: 3.0
+  dropoff: 1.5
+  ready: 2.0
+  complete_pickup_cycle: 10.8  # Sum of above
+
+# Safety limits and validation
+safety:
+  max_feed_rate: 6000  # mm/min
+  min_feed_rate: 100   # mm/min
+  max_z_depth: -100    # Deepest allowed Z
+  emergency_stop_z: -5 # Z height for emergency stops
+  
+# Error recovery sequences
+error_recovery:
+  soft_error:
+    description: "Recover from soft error (position lost, etc.)"
+    commands:
+      - gcode: "M5"
+        params: ""
+        description: "Ensure gripper is off"
+      - gcode: "G28"
+        params: ""
+        description: "Home all axes"
+      - gcode: "G1"
+        params: "X{positions.ready.x} Y{positions.ready.y} Z{positions.ready.z} F{feed_rates.positioning}"
+        description: "Move to ready position"
+        
+  hard_error:
+    description: "Recover from hard error (alarm, limit hit, etc.)"
+    commands:
+      - gcode: "$X"
+        params: ""
+        description: "Clear alarm state"
+      - gcode: "M5"
+        params: ""
+        description: "Ensure gripper is off"
+      - gcode: "G28"
+        params: ""
+        description: "Home all axes"
+      - gcode: "G1"
+        params: "X{positions.ready.x} Y{positions.ready.y} Z{positions.ready.z} F{feed_rates.positioning}"
+        description: "Move to ready position"

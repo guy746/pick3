@@ -1,0 +1,354 @@
+# Vision Agent Configuration
+# Supports both simulation and OAK-D Pro camera modes
+# 
+# To switch modes:
+# 1. Change vision.mode below
+# 2. Set environment variables for Roboflow API
+# 3. Restart vision agent
+#
+# Environment Variables Required for Camera Mode:
+# export ROBOFLOW_API_KEY="your_api_key_here"
+# export ROBOFLOW_WORKSPACE="your_workspace_name"
+# export ROBOFLOW_PROJECT="green_object_detection"
+
+# General vision settings
+vision:
+  mode: "simulation"  # "simulation" or "oak_d_pro" - CHANGE THIS TO SWITCH MODES
+  vision_line: 50     # mm - detection line position on conveyor
+  detection_memory_seconds: 2  # Remember detected objects for N seconds
+  check_interval: 0.05  # 20Hz checking rate
+  
+# Simulation mode settings
+simulation:
+  redis_host: "localhost"
+  redis_port: 6379
+  
+# OAK-D Pro camera settings
+oak_d_pro:
+  # Camera configuration
+  color_resolution: "1080p"  # "720p", "1080p", "4k"
+  depth_resolution: "720p"   # "720p", "800p"
+  fps: 30
+  
+  # Depth processing
+  median_filter: "KERNEL_7x7"  # Noise reduction
+  lr_check: true               # Left-right consistency check
+  subpixel: false              # Subpixel accuracy (slower)
+  depth_mode: "HIGH_ACCURACY"  # "HIGH_ACCURACY", "HIGH_DENSITY"
+  
+  # Calibration parameters (to be measured for specific setup)
+  camera_matrix:
+    fx: 800.0  # Focal length X
+    fy: 800.0  # Focal length Y  
+    cx: 640.0  # Principal point X
+    cy: 360.0  # Principal point Y
+    
+  # Distance calibration
+  depth_scale: 1.0  # mm per depth unit
+  
+  # Belt calibration (critical for accurate measurements)
+  belt_calibration:
+    # Base height of conveyor belt surface (mm from camera)
+    base_height_mm: 1200.0      # Distance to empty belt surface
+    height_tolerance: 5.0        # ±5mm tolerance for belt surface detection
+    
+    # Belt coordinate system calibration
+    belt_origin:
+      pixel_x: 400               # Pixel X corresponding to belt center
+      pixel_y: 250               # Pixel Y corresponding to belt center
+      world_x_mm: 0              # Real-world X position (mm) at pixel origin
+      world_y_mm: 0              # Real-world Y position (mm) at pixel origin
+    
+    # Pixel-to-millimeter conversion factors
+    mm_per_pixel_x: 0.8          # mm per pixel in X direction
+    mm_per_pixel_y: 0.8          # mm per pixel in Y direction
+    
+    # Belt dimensions and boundaries
+    belt_width_mm: 400           # Physical belt width
+    belt_length_visible_mm: 600  # Visible belt length in camera view
+    
+    # Calibration status and validation
+    calibrated: false            # Set to true after successful calibration
+    calibration_date: null       # ISO timestamp of last calibration
+    calibration_accuracy: 0.0    # Measured accuracy in mm (RMS error)
+    
+  # Belt speed estimation
+  belt_speed_estimation:
+    enabled: true                 # Enable periodic belt speed estimation
+    estimation_interval: 30.0     # Estimate speed every N seconds
+    measurement_method: "optical_flow"  # "optical_flow", "feature_tracking", "object_tracking"
+    
+    # Optical flow parameters
+    optical_flow:
+      roi_area:                   # Region of interest for speed measurement
+        x_min: 200
+        x_max: 600
+        y_min: 100
+        y_max: 400
+      flow_method: "lucas_kanade"  # "lucas_kanade", "farneback"
+      feature_detection: "goodFeaturesToTrack"  # OpenCV feature detector
+      max_features: 100           # Maximum features to track
+      quality_level: 0.01         # Feature detection quality
+      min_distance: 10            # Minimum distance between features
+      
+    # Speed calculation
+    speed_calculation:
+      pixel_distance_threshold: 5  # Minimum pixel movement to consider
+      max_speed_mms: 500          # Maximum expected belt speed (mm/s)
+      min_speed_mms: 10           # Minimum expected belt speed (mm/s)
+      smoothing_window: 5         # Number of measurements to average
+      outlier_rejection: true     # Remove outlier measurements
+      
+    # Speed validation and alerts
+    validation:
+      expected_speed_mms: 150     # Expected nominal belt speed (mm/s)
+      speed_tolerance_percent: 20  # ±20% tolerance for speed warnings
+      speed_change_alert_percent: 10  # Alert if speed changes >10% suddenly
+  
+  # Detection zone configuration
+  detection_zone:
+    # Detection line position (equivalent to 50mm line in simulation)
+    x_position: 400        # X pixel coordinate of detection line
+    line_width: 50         # Width of detection zone (pixels)
+    
+    # Full detection area bounds
+    x_min: 375             # Left edge of detection zone  
+    x_max: 425             # Right edge of detection zone
+    y_min: 50              # Top of conveyor area
+    y_max: 450             # Bottom of conveyor area
+    
+  # Lane boundaries within detection zone (Y coordinates)
+  # These need to be calibrated based on camera mounting
+  lane_boundaries:
+    lane_0:
+      y_min: 50
+      y_max: 150
+    lane_1:
+      y_min: 150
+      y_max: 250
+    lane_2:
+      y_min: 250
+      y_max: 350
+    lane_3:
+      y_min: 350
+      y_max: 450
+      
+  # Coordinate transformation (camera to belt coordinates)
+  coordinate_transform:
+    # Perspective transformation matrix (3x3)
+    # Maps camera pixels to real-world mm on belt
+    matrix: [
+      [0.5, 0.0, 0.0],    # X scaling and offset
+      [0.0, 0.5, 0.0],    # Y scaling and offset  
+      [0.0, 0.0, 1.0]     # Homogeneous coordinates
+    ]
+    
+# YOLO object detection settings (Roboflow)
+yolo:
+  platform: "roboflow"                   # "roboflow" or "ultralytics"
+  
+  # Roboflow model configuration
+  roboflow:
+    api_key: "${ROBOFLOW_API_KEY}"       # Set via environment variable: export ROBOFLOW_API_KEY="your_key"
+    workspace: "${ROBOFLOW_WORKSPACE}"   # Set via environment variable: export ROBOFLOW_WORKSPACE="workspace_name"  
+    project: "${ROBOFLOW_PROJECT}"       # Set via environment variable: export ROBOFLOW_PROJECT="project_name"
+    version: 1                           # Model version
+    model_format: "yolov8"               # Model format (yolov8, yolov5, etc.)
+    
+  # Alternative: Local model path
+  model_path: "yolo_models/green_objects.pt"  # Path to downloaded model
+  
+  confidence_threshold: 0.5              # Minimum detection confidence
+  nms_threshold: 0.4                     # Non-maximum suppression
+  max_detections: 50                     # Maximum objects per frame
+  
+  # Green object detection
+  green_detection:
+    enabled: true
+    method: "hsv_filter"  # "hsv_filter", "ml_classifier"
+    
+    # HSV color range for green detection
+    hsv_range:
+      hue_min: 35      # Lower hue bound
+      hue_max: 85      # Upper hue bound
+      saturation_min: 50   # Minimum saturation
+      saturation_max: 255  # Maximum saturation
+      value_min: 50        # Minimum brightness
+      value_max: 255       # Maximum brightness
+      
+    # Minimum percentage of green pixels to classify as green object
+    green_ratio_threshold: 0.3
+    
+  # Object classes to detect (COCO class IDs)
+  target_classes:
+    - 0   # person (if detecting people handling objects)
+    - 39  # bottle
+    - 41  # cup
+    - 45  # banana (example green object)
+    - 46  # apple
+    # Add other relevant object classes
+
+# Object measurement settings
+measurement:
+  # Area calculation
+  area:
+    method: "depth_based"  # "pixel_based", "depth_based"
+    default_area: 1500     # mm² - fallback if measurement fails
+    
+    # Conversion factors for pixel-based measurement
+    pixel_to_mm2: 0.1  # Rough conversion factor
+    
+  # Height calculation  
+  height:
+    method: "depth_variance"  # "depth_variance", "stereo_3d"
+    default_height: 32.5      # mm - fallback height
+    min_height: 10.0          # Minimum valid height
+    max_height: 100.0         # Maximum valid height
+    
+    # Depth processing for height
+    depth_filter_size: 5      # Median filter size for depth data
+    height_percentile: 95     # Use 95th percentile for top surface
+    
+  # Position calculation
+  position:
+    method: "perspective_transform"  # "perspective_transform", "depth_triangulation"
+    
+    # Belt coordinate system (mm)
+    belt_width: 400      # Total belt width
+    belt_length: 1000    # Visible belt length
+    
+    # Origin point (camera reference)
+    origin_x: 0          # X offset from camera center
+    origin_y: 0          # Y offset from camera center
+
+# Performance and debugging
+performance:
+  # Frame processing
+  max_fps: 30              # Maximum processing frame rate
+  skip_frames: 1           # Process every Nth frame (1 = every frame)
+  
+  # Buffer sizes
+  frame_buffer_size: 5     # Number of frames to buffer
+  detection_buffer_size: 100  # Number of recent detections to keep
+  
+  # Logging
+  log_detections: true     # Log all detections
+  log_performance: true    # Log performance metrics
+  save_debug_images: false # Save detected objects as images
+  debug_image_path: "debug_images/"
+  
+# Error handling and recovery
+error_handling:
+  # Camera connection
+  reconnect_attempts: 5    # Number of reconnection attempts
+  reconnect_delay: 2.0     # Seconds between attempts
+  
+  # Detection failures
+  max_consecutive_failures: 10  # Switch to fallback mode after N failures
+  fallback_mode: "simulation"   # Mode to switch to on failure
+  
+  # Calibration validation
+  validate_calibration: true    # Check calibration on startup
+  calibration_tolerance: 0.1    # Acceptable calibration error
+  
+# Integration settings
+integration:
+  # Redis channels
+  publish_channels:
+    detections: "events:vision"
+    status: "events:vision_status"
+    debug: "events:vision_debug"
+    
+  subscribe_channels:
+    commands: "events:vision_commands"
+    system: "events:system"
+    
+  # Compatibility with existing system
+  legacy_mode: true        # Publish to legacy channels
+  simulation_fallback: true  # Fallback to simulation data if camera fails
+  
+# Calibration procedures
+calibration:
+  # Auto-calibration
+  auto_calibrate: false    # Attempt auto-calibration on startup
+  
+  # Belt height calibration procedure
+  belt_height_calibration:
+    # Number of sample points to measure empty belt
+    sample_points: 25
+    # Sample area on empty belt (pixel coordinates)
+    sample_area:
+      x_min: 300
+      x_max: 500
+      y_min: 200
+      y_max: 400
+    # Statistical method for base height calculation
+    height_method: "median"  # "mean", "median", "mode"
+    # Outlier rejection (remove depths > N standard deviations from mean)
+    outlier_threshold: 2.0
+  
+  # Belt coordinate calibration using checkerboard with AprilTags
+  coordinate_calibration:
+    # Calibration method
+    method: "checkerboard_apriltag"  # "checkerboard_apriltag", "reference_objects", "manual_points"
+    
+    # Checkerboard pattern specifications
+    checkerboard:
+      # Pattern dimensions
+      pattern_size: [7, 5]           # Inner corners (width, height)
+      square_size_mm: 30.0           # Size of each square in mm
+      
+      # AprilTag configuration
+      apriltag_family: "tag36h11"    # tag36h11, tag25h9, tag16h5
+      apriltag_size_mm: 25.0         # Physical size of AprilTag in mm
+      
+      # Expected AprilTag positions on checkerboard
+      apriltag_positions:
+        - tag_id: 0
+          corner_position: [0, 0]     # Which checkerboard corner (top-left = [0,0])
+          world_position_mm: [-105, -75]  # Real-world position on belt
+        - tag_id: 1  
+          corner_position: [6, 0]     # Top-right corner
+          world_position_mm: [105, -75]
+        - tag_id: 2
+          corner_position: [0, 4]     # Bottom-left corner  
+          world_position_mm: [-105, 45]
+        - tag_id: 3
+          corner_position: [6, 4]     # Bottom-right corner
+          world_position_mm: [105, 45]
+    
+    # Fallback: Reference objects with known positions and sizes
+    reference_objects:
+      - name: "calibration_block_1"
+        known_position_mm: [100, 0]    # X, Y on belt
+        known_size_mm: [50, 50, 25]    # Width, Length, Height
+        pixel_position: [350, 200]     # Expected pixel location
+      - name: "calibration_block_2"  
+        known_position_mm: [-100, 0]
+        known_size_mm: [50, 50, 25]
+        pixel_position: [450, 200]
+    
+    # Calibration accuracy requirements
+    position_tolerance_mm: 2.0      # Max position error (stricter with checkerboard)
+    size_tolerance_percent: 5.0     # Max size measurement error
+    min_detection_points: 4         # Minimum points needed for calibration
+    
+  # Manual calibration points (real-world coordinates in mm)
+  reference_points:
+    - pixel: [300, 150]    # Left edge of belt
+      world: [-200, 0]
+    - pixel: [500, 150]    # Right edge of belt  
+      world: [200, 0]
+    - pixel: [300, 350]    # Left edge, further down belt
+      world: [-200, 300]
+    - pixel: [500, 350]    # Right edge, further down belt
+      world: [200, 300]
+      
+  # Calibration validation
+  validation_points:
+    - pixel: [400, 250]    # Center of belt
+      world: [0, 150]
+      tolerance: 10.0      # mm tolerance
+    - pixel: [350, 200]    # Quarter point
+      world: [-100, 75]
+      tolerance: 10.0

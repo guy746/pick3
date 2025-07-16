@@ -1,0 +1,144 @@
+/* Basic layout */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f0f0f0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+header {
+    background: #333;
+    color: white;
+    padding: 20px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    margin: 0 0 10px 0;
+}
+
+.status {
+    display: flex;
+    gap: 20px;
+}
+
+.status span {
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+.connected { color: #28a745; }
+.disconnected { color: #dc3545; }
+
+main {
+    display: flex;
+    gap: 20px;
+}
+
+#conveyor-canvas {
+    border: 2px solid #333;
+    background: #222;
+}
+
+.legend, .zones, .status-messages {
+    background: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    min-width: 200px;
+}
+
+.legend h3, .zones h3, .status-messages h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+}
+
+.color-box {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+}
+
+.color-box.green { background-color: #28a745; }
+.color-box.blue { background-color: #007bff; }
+.color-box.red { background-color: #dc3545; }
+.color-box.yellow { background-color: #ffc107; }
+.color-box.orange { background-color: #fd7e14; }
+
+/* Status Messages */
+.status-messages {
+    max-width: 400px;
+}
+
+#status-log {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    padding: 10px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.status-message {
+    margin-bottom: 3px;
+    padding: 2px 5px;
+    border-radius: 2px;
+    word-wrap: break-word;
+}
+
+.status-message.vision { background-color: #d4edda; color: #155724; }
+.status-message.scoring { background-color: #cce5ff; color: #004085; }
+.status-message.cnc { background-color: #fff3cd; color: #856404; }
+.status-message.trigger { background-color: #f8d7da; color: #721c24; }
+.status-message.system { background-color: #e2e3e5; color: #495057; }
+
+.timestamp {
+    color: #6c757d;
+    font-size: 10px;
+}
+
+/* Agent status under conveyor */
+.agent-status {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 10px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.agent-status p {
+    margin: 0 0 8px 0;
+    padding: 5px 8px;
+    border-radius: 3px;
+    background: #fff;
+    border-left: 4px solid #ccc;
+}
+
+.agent-status p:last-child {
+    margin-bottom: 0;
+}
+
+.agent-status .status-active {
+    background: #d4edda;
+    border-left-color: #28a745;
+    font-weight: bold;
+}

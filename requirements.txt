@@ -3,3 +3,21 @@ Flask-SocketIO==5.3.4
 python-socketio==5.9.0
 redis==4.5.4
 python-dotenv==1.0.0
+PyYAML==6.0
+gunicorn==21.2.0
+eventlet==0.33.3
+
+# Vision processing dependencies
+opencv-python==4.8.1.78
+numpy==1.24.3
+
+# OAK-D Pro camera support (optional - install when switching to camera mode)
+# depthai==2.21.2
+
+# YOLO object detection - Roboflow platform (optional - install when switching to camera mode)  
+# roboflow==1.1.9
+
+# Alternative: Ultralytics YOLO (fallback)
+# ultralytics==8.0.165
+# torch>=1.13.0
+# torchvision>=0.14.0

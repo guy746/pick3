@@ -11,43 +11,23 @@
     <div class="container">
         <header>
             <h1>Pick1 Conveyor System</h1>
-            <div class="status">
-                <span id="connection-status" class="disconnected">Disconnected</span>
-                <span id="object-count">Objects: 0</span>
-                <span id="cnc-status">CNC: Idle</span>
-            </div>
+            <span id="connection-status" class="disconnected">Disconnected</span><br>
+            <span id="object-count">Objects: 0</span><br>
+            <span id="cnc-status">CNC: Idle</span><br>
+            <span id="scoring-status">Scoring: Idle</span><br>
+            <span id="vision-lane" style="display: none;">Vision: Lane 0</span>
         </header>
         
         <main>
             <canvas id="conveyor-canvas"></canvas>
             
-            <div class="legend">
-                <h3>Legend</h3>
-                <div class="legend-item">
-                    <span class="color-box green"></span> Green - Circuit Board (Pickable)
-                </div>
-                <div class="legend-item">
-                    <span class="color-box blue"></span> Blue - Non-pickable
-                </div>
-                <div class="legend-item">
-                    <span class="color-box red"></span> Red - Non-pickable
-                </div>
-                <div class="legend-item">
-                    <span class="color-box yellow"></span> Yellow - Non-pickable
-                </div>
-                <div class="legend-item">
-                    <span class="color-box orange"></span> Orange - Non-pickable
-                </div>
+            <!-- Simple agent status under conveyor -->
+            <div class="agent-status">
+                <p id="vision-agent-status">Vision: Idle</p>
+                <p id="scoring-agent-status">Score: Idle</p>
+                <p id="trigger-agent-status">Trigger: Idle</p>
+                <p id="cnc-agent-status">CNC: Idle</p>
             </div>
-            
-            <div class="zones">
-                <h3>Zones</h3>
-                <div>Vision Detection: 50mm</div>
-                <div>Trigger Zone: 300mm</div>
-                <div>Pickup Zone: 375-425mm</div>
-                <div>Post-Pick Monitor: 475mm</div>
-            </div>
-        </div>
         </main>
     </div>
     
@@ -56,4 +36,4 @@
     </script>
     <script src="{{ url_for('static', filename='js/canvas.js') }}"></script>
 </body>
-</html>
+</html><!-- Test mount Tue Jul 15 03:37:43 PM EDT 2025 -->

@@ -1,37 +1,5 @@
 #!/usr/bin/env python3
 """
-Diagnose visualization issues and create fixed test_data.py
-"""
-
-import redis
-import time
-
-def check_redis_state():
-    """Check what's in Redis right now"""
-    print("Checking Redis state...\n")
-    
-    # Using host.docker.internal for Docker container networking
-    r = redis.Redis(host='host.docker.internal', port=6379, decode_responses=True)
-    
-    # Check active objects
-    active_objects = r.zrange('objects:active', 0, -1, withscores=True)
-    print(f"Active objects: {len(active_objects)}")
-    for obj_id, pos in active_objects:
-        obj_data = r.hgetall(f'object:{obj_id}')
-        print(f"  {obj_id}: pos={pos:.1f}, type={obj_data.get('type')}, ring={obj_data.get('ring_color')}")
-    
-    # Check CNC state
-    cnc_data = r.hgetall('cnc:0')
-    print(f"\nCNC State: pos={cnc_data.get('position_x')}, status={cnc_data.get('status')}, has_object={cnc_data.get('has_object')}")
-    
-    print("\n" + "="*50 + "\n")
-
-def create_fixed_test_data():
-    """Create a properly working test_data.py"""
-    print("Creating fixed test_data.py...")
-    
-    content = '''#!/usr/bin/env python3
-"""
 Test data generator for Pick1 visualization - Fixed version
 """
 
@@ -80,9 +48,9 @@ def setup_conveyor_config():
         'lanes': '4',
         'lane_width': '100',
         'vision_zone': '50',
-        'trigger_zone': '300',
-        'pickup_zone_start': '375',
-        'pickup_zone_end': '425',
+        'trigger_zone': '250',
+        'pickup_zone_start': '300',
+        'pickup_zone_end': '375',
         'post_pick_zone': '475'
     }
     r.hset('conveyor:config', mapping=config)
@@ -91,7 +59,7 @@ def setup_conveyor_config():
 def setup_cnc():
     """Set up CNC initial state"""
     cnc_data = {
-        'position_x': '400',
+        'position_x': '337.5',
         'position_y': '200',
         'position_z': '100',
         'status': 'idle',
@@ -122,6 +90,20 @@ def animate_objects():
             
             new_position = position + (belt_speed * update_interval)
             
+            # Check if green object crosses trigger line (250mm)
+            if (r.hget(f'object:{obj_id}', 'type') == 'green' and 
+                position < 250 and new_position >= 250):
+                # Flash trigger line yellow for green object detection
+                r.setex('trigger:flash', 1, 'true')
+                print(f"Green object {obj_id} detected at trigger line!")
+            
+            # Check if green object crosses post-pick monitor line (475mm)
+            if (r.hget(f'object:{obj_id}', 'type') == 'green' and 
+                position < 475 and new_position >= 475):
+                # Flash post-pick monitor line yellow for green object detection
+                r.setex('monitor:flash', 1, 'true')
+                print(f"Green object {obj_id} detected at post-pick monitor!")
+            
             if new_position > 500:
                 # Remove object that's past the belt
                 pipe.zrem('objects:active', obj_id)
@@ -131,22 +113,6 @@ def animate_objects():
                 # Update position
                 pipe.hset(f'object:{obj_id}', 'position_x', str(new_position))
                 pipe.zadd('objects:active', {obj_id: new_position})
-                
-                # Update ring status based on position
-                obj_type = r.hget(f'object:{obj_id}', 'type')
-                if obj_type == 'green':
-                    if 50 < new_position < 300:
-                        # Vision zone to trigger - yellow ring
-                        pipe.hset(f'object:{obj_id}', 'has_ring', 'true')
-                        pipe.hset(f'object:{obj_id}', 'ring_color', 'yellow')
-                    elif 300 <= new_position < 375:
-                        # At trigger line - turn red
-                        pipe.hset(f'object:{obj_id}', 'has_ring', 'true')
-                        pipe.hset(f'object:{obj_id}', 'ring_color', 'red')
-                    elif new_position >= 375:
-                        # In pickup zone - keep red
-                        pipe.hset(f'object:{obj_id}', 'has_ring', 'true')
-                        pipe.hset(f'object:{obj_id}', 'ring_color', 'red')
         
         # Execute all updates at once
         pipe.execute()
@@ -163,13 +129,26 @@ def spawn_objects():
     weights = [0.4, 0.15, 0.15, 0.15, 0.15]  # 40% green
     
     while True:
-        # Shorter spawn interval for 500mm belt
-        time.sleep(random.uniform(1.5, 2.5))
+        # Longer spawn interval to reduce race conditions
+        time.sleep(random.uniform(3.0, 5.0))
+        
+        # Check if pickup is in progress - delay spawning green objects during pickup
+        with pickup_lock:
+            is_pickup_active = pickup_in_progress
         
         # Create new object
         obj_id = f'obj_{obj_counter:04d}'
         lane = random.randint(0, 3)
-        color = random.choices(colors, weights=weights)[0]
+        
+        # Reduce green object spawning during active pickup to prevent conflicts
+        if is_pickup_active:
+            # Spawn fewer green objects during pickup operations
+            adjusted_weights = [0.2, 0.2, 0.2, 0.2, 0.2]  # Equal distribution
+            color = random.choices(colors, weights=adjusted_weights)[0]
+            print(f"Spawning {color} object {obj_id} (pickup in progress)")
+        else:
+            color = random.choices(colors, weights=weights)[0]
+            print(f"Spawning {color} object {obj_id}")
         
         create_test_object(obj_id, 0, lane, color)
         
@@ -188,7 +167,7 @@ def simulate_pickup():
                 continue
         
         # Find green objects in pickup zone
-        objects_in_zone = r.zrangebyscore('objects:active', 375, 425, withscores=True)
+        objects_in_zone = r.zrangebyscore('objects:active', 300, 375, withscores=True)
         
         green_objects = []
         for obj_id, pos in objects_in_zone:
@@ -202,7 +181,7 @@ def simulate_pickup():
             with pickup_lock:
                 pickup_in_progress = True
             
-            print(f"\\nStarting pickup of {obj_id} at position {position:.1f}")
+            print(f"\nStarting pickup of {obj_id} at position {position:.1f}")
             
             # Mark object as being picked
             r.hset(f'object:{obj_id}', 'status', 'picking')
@@ -210,12 +189,12 @@ def simulate_pickup():
             # Move CNC to object position
             r.hset('cnc:0', 'position_x', str(position))
             r.hset('cnc:0', 'status', 'moving')
-            time.sleep(0.2)
+            time.sleep(0.4)  # Doubled from 0.2
             
             # Start picking
             r.hset('cnc:0', 'status', 'picking')
             r.hset('cnc:0', 'has_object', 'true')
-            time.sleep(0.3)
+            time.sleep(0.6)  # Doubled from 0.3
             
             # Remove object from belt
             r.zrem('objects:active', obj_id)
@@ -223,27 +202,32 @@ def simulate_pickup():
             print(f"Picked up {obj_id}")
             
             # Move to drop position
-            r.hset('cnc:0', 'position_x', '400')
+            r.hset('cnc:0', 'position_x', '337.5')
             r.hset('cnc:0', 'status', 'moving')
-            time.sleep(0.2)
+            time.sleep(0.4)  # Doubled from 0.2
             
             # Drop object
             r.hset('cnc:0', 'status', 'dropping')
-            time.sleep(0.2)
+            time.sleep(0.4)  # Doubled from 0.2
             r.hset('cnc:0', 'has_object', 'false')
             
             # Flash bin
             r.setex('bin:0:flash', 1, 'true')
             
-            # Return to idle
+            # Return to home position
+            r.hset('cnc:0', 'status', 'returning_home')
+            r.hset('cnc:0', 'position_x', '337.5')
+            time.sleep(0.5)  # Time to return to home position
+            
+            # Set to idle at home position
             r.hset('cnc:0', 'status', 'idle')
-            print(f"Completed pickup cycle\\n")
+            print(f"Completed pickup cycle - CNC returned to home\n")
             
             with pickup_lock:
                 pickup_in_progress = False
             
             # Brief cooldown
-            time.sleep(0.5)
+            time.sleep(1.0)  # Doubled from 0.5
 
 def monitor_performance():
     """Monitor and report performance stats"""
@@ -253,7 +237,7 @@ def monitor_performance():
         active_count = r.zcard('objects:active')
         cnc_status = r.hget('cnc:0', 'status')
         
-        print(f"\\n[Monitor] Active objects: {active_count}, CNC: {cnc_status}")
+        print(f"\n[Monitor] Active objects: {active_count}, CNC: {cnc_status}")
 
 def main():
     """Run test data generator"""
@@ -274,8 +258,8 @@ def main():
     create_test_object('obj_0004', 350, 3, 'red')
     create_test_object('obj_0005', 400, 0, 'orange')
     
-    print("\\nStarting animation threads...")
-    print("Press Ctrl+C to stop\\n")
+    print("\nStarting animation threads...")
+    print("Press Ctrl+C to stop\n")
     
     # Start animation threads
     threads = [
@@ -292,47 +276,7 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\\nStopping test data generator...")
-
-if __name__ == '__main__':
-    main()
-'''
-    
-    with open('test_data.py', 'w') as f:
-        f.write(content)
-    print("✓ Fixed test_data.py created")
-
-def main():
-    """Run diagnostics and fix"""
-    print("Pick1 Diagnostic and Fix Tool\n")
-    
-    try:
-        # First check current state
-        check_redis_state()
-        
-        # Create fixed test data
-        create_fixed_test_data()
-        
-        print("\n✅ Fixes applied!")
-        print("\nWhat was fixed:")
-        print("1. Smoother movement - 10Hz updates (was 5Hz)")
-        print("2. Proper pickup simulation with status updates")
-        print("3. Thread-safe pickup operations")
-        print("4. Better object spawning (40% green)")
-        print("5. Performance monitoring")
-        print("6. Pipeline updates for efficiency")
-        print("\nNext steps:")
-        print("1. Stop current test_data.py (Ctrl+C)")
-        print("2. Run: python test_data.py")
-        print("3. Watch for pickup messages in console")
-        print("\nThe CNC should now:")
-        print("- Move to green objects in pickup zone")
-        print("- Show 'picking' status")
-        print("- Remove objects from belt")
-        print("- Return to center and flash bin")
-        
-    except Exception as e:
-        print(f"Error: {e}")
+        print("\nStopping test data generator...")
 
 if __name__ == '__main__':
     main()

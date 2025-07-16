@@ -1,0 +1,45 @@
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 385, in connect_check_health
+    sock = self.retry.call_with_retry(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/retry.py", line 92, in call_with_retry
+    raise error
+  File "/usr/local/lib/python3.11/site-packages/redis/retry.py", line 87, in call_with_retry
+    return do()
+           ^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 386, in <lambda>
+    lambda: self._connect(), lambda error: self.disconnect(error)
+            ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 797, in _connect
+    raise err
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 781, in _connect
+    sock.connect(socket_address)
+TimeoutError: [Errno 110] Connection timed out
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/pick1websim/scoring_agent.py", line 184, in <module>
+    main()
+  File "/app/pick1websim/scoring_agent.py", line 181, in main
+    agent.run()
+  File "/app/pick1websim/base_agent.py", line 79, in run
+    self.subscribe()
+  File "/app/pick1websim/base_agent.py", line 41, in subscribe
+    self.pubsub.subscribe(self.subscribe_channels)
+  File "/usr/local/lib/python3.11/site-packages/redis/client.py", line 1034, in subscribe
+    ret_val = self.execute_command("SUBSCRIBE", *new_channels.keys())
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/client.py", line 864, in execute_command
+    self.connection = self.connection_pool.get_connection()
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/utils.py", line 191, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 1530, in get_connection
+    connection.connect()
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 379, in connect
+    self.connect_check_health(check_health=True)
+  File "/usr/local/lib/python3.11/site-packages/redis/connection.py", line 389, in connect_check_health
+    raise TimeoutError("Timeout connecting to server")
+redis.exceptions.TimeoutError: Timeout connecting to server

@@ -21,7 +21,7 @@ import threading
 from enum import Enum
 
 # Connect to Redis
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(host='host.docker.internal', port=6379, decode_responses=True)
 
 # CNC States
 class CNCState(Enum):

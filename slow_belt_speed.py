@@ -37,7 +37,8 @@ import time
 import random
 import threading
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+# Using host.docker.internal for Docker container networking
+r = redis.Redis(host='host.docker.internal', port=6379, decode_responses=True)
 
 # Belt configuration
 BELT_SPEED = 100  # mm/sec (25% slower than original 133.33)

@@ -55,6 +55,7 @@ let missedPickupTime = 0;  // Track when a missed pickup was detected"""
         # Replace with updated handler
         content = content[:world_update_idx] + update_handler + content[end_idx + 2:]  # +2 to skip ");"
     
+    
     # Find and update the drawConveyor function
     new_draw_conveyor = '''// Draw conveyor belt
 function drawConveyor() {
@@ -255,7 +256,8 @@ import time
 import random
 import threading
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+# Using host.docker.internal for Docker container networking
+r = redis.Redis(host='host.docker.internal', port=6379, decode_responses=True)
 
 # Tracking
 assigned_objects = {}  # Track which objects were assigned

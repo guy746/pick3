@@ -28,6 +28,8 @@ let binFlashTime = 0;
 let missedPickupTime = 0;  // Track when a missed pickup was detected
 let triggerFlashTime = 0;  // Track when trigger line should flash
 let monitorFlashTime = 0;  // Track when monitor line should flash
+let scoringLaneInfo = null;  // Store scoring lane info with timestamp
+let scoringDisplayTimeout = null;  // Timeout for clearing scoring display
 
 // Object type colors
 const OBJECT_COLORS = {
@@ -63,6 +65,7 @@ function initSocket() {
         if (state.monitor_flash) {
             monitorFlashTime = Date.now();
         }
+        updateStatus();
     });
     
         socket.on('world_update', (state) => {
@@ -87,13 +90,232 @@ function initSocket() {
     socket.on('event', (event) => {
         console.log('Event:', event);
     });
+    
+    socket.on('status_message', (message) => {
+        addStatusMessage(message);
+        updateAgentStatus(message);
+    });
 }
+
+// Track last data update time
+let lastDataUpdate = 0;
 
 // Update status display
 function updateStatus() {
     const objectCount = Object.keys(worldState.objects).length;
     document.getElementById('object-count').textContent = `Objects: ${objectCount}`;
     document.getElementById('cnc-status').textContent = `CNC: ${worldState.cnc?.status || 'Unknown'}`;
+    
+    // Update scoring status with lane assignment (with 2-second persistence)
+    const assignedLane = worldState.cnc?.assigned_lane;
+    
+    if (assignedLane !== undefined) {
+        // New lane assignment - store it and display immediately
+        scoringLaneInfo = {
+            lane: assignedLane,
+            timestamp: Date.now()
+        };
+        document.getElementById('scoring-status').textContent = `Scoring: Lane ${assignedLane}`;
+        
+        // Clear any existing timeout
+        if (scoringDisplayTimeout) {
+            clearTimeout(scoringDisplayTimeout);
+        }
+    } else if (scoringLaneInfo) {
+        // No current assignment, but we have stored info
+        const timeSinceAssignment = Date.now() - scoringLaneInfo.timestamp;
+        
+        if (timeSinceAssignment < 2000) {
+            // Keep showing the lane for 2 seconds
+            document.getElementById('scoring-status').textContent = `Scoring: Lane ${scoringLaneInfo.lane}`;
+        } else {
+            // More than 2 seconds - clear to idle
+            scoringLaneInfo = null;
+            document.getElementById('scoring-status').textContent = 'Scoring: Idle';
+        }
+    } else {
+        // No assignment and no stored info
+        document.getElementById('scoring-status').textContent = 'Scoring: Idle';
+    }
+    
+    // Update connection status based on data flow
+    updateConnectionStatus(objectCount);
+    
+    // Update status messages if they're in the world state
+    if (worldState.status_messages) {
+        updateStatusMessages(worldState.status_messages);
+    }
+}
+
+// Update connection status based on Redis data flow
+function updateConnectionStatus(objectCount) {
+    const now = Date.now();
+    const connectionStatus = document.getElementById('connection-status');
+    
+    // If we have objects or recent world state updates, we're connected
+    if (objectCount > 0 || (worldState.timestamp && (now - (worldState.timestamp * 1000)) < 5000)) {
+        lastDataUpdate = now;
+        connectionStatus.textContent = 'Connected';
+        connectionStatus.className = 'connected';
+    } else if (now - lastDataUpdate > 10000) {
+        // No data for 10 seconds = disconnected
+        connectionStatus.textContent = 'Disconnected';
+        connectionStatus.className = 'disconnected';
+    }
+}
+
+// Add a status message to the display
+function addStatusMessage(message) {
+    const statusLog = document.getElementById('status-log');
+    if (!statusLog) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `status-message ${message.agent}`;
+    
+    const timestamp = document.createElement('span');
+    timestamp.className = 'timestamp';
+    timestamp.textContent = `[${message.timestamp}] `;
+    
+    const content = document.createElement('span');
+    content.textContent = `${message.agent.toUpperCase()}: ${message.message}`;
+    
+    messageDiv.appendChild(timestamp);
+    messageDiv.appendChild(content);
+    
+    statusLog.appendChild(messageDiv);
+    
+    // Auto-scroll to bottom
+    statusLog.scrollTop = statusLog.scrollHeight;
+    
+    // Keep only last 50 messages
+    while (statusLog.children.length > 50) {
+        statusLog.removeChild(statusLog.firstChild);
+    }
+}
+
+// Update status messages from world state
+function updateStatusMessages(messages) {
+    const statusLog = document.getElementById('status-log');
+    if (!statusLog || !messages) return;
+    
+    // Only update if we have new messages
+    const currentCount = statusLog.children.length;
+    if (messages.length <= currentCount) return;
+    
+    // Add new messages
+    for (let i = currentCount; i < messages.length; i++) {
+        addStatusMessage(messages[i]);
+    }
+}
+
+// Update agent status under conveyor
+function updateAgentStatus(message) {
+    const agent = message.agent.toLowerCase();
+    const text = message.message.toLowerCase();
+    
+    let statusElement, statusText;
+    
+    if (agent === 'vision') {
+        statusElement = document.getElementById('vision-agent-status');
+        if (text.includes('detected')) {
+            statusText = `Vision: Detected ${getObjectFromMessage(text)}`;
+        }
+    } else if (agent === 'scoring') {
+        statusElement = document.getElementById('scoring-agent-status');
+        if (text.includes('assigned')) {
+            statusText = `Score: Assigned ${getLaneFromMessage(text)}`;
+        } else if (text.includes('confirmed')) {
+            statusText = `Score: Confirmed ${getObjectFromMessage(text)}`;
+        }
+    } else if (agent === 'trigger') {
+        statusElement = document.getElementById('trigger-agent-status');
+        if (text.includes('watching')) {
+            statusText = `Trigger: Watching ${getObjectFromMessage(text)}`;
+        } else if (text.includes('approaching')) {
+            statusText = `Trigger: Object approaching`;
+        }
+    } else if (agent === 'cnc') {
+        statusElement = document.getElementById('cnc-agent-status');
+        if (text.includes('ready')) {
+            statusText = 'CNC R: Ready';
+            // Show vision lane flash when CNC sends ready notice
+            const laneMatch = text.match(/lane (\d+)/);
+            if (laneMatch) {
+                showVisionLaneFlash(laneMatch[1]);
+            }
+        } else if (text.includes('assigned')) {
+            statusText = `CNC: Assigned ${getLaneFromMessage(text)}`;
+        } else if (text.includes('pick')) {
+            statusText = 'CNC: Pick';
+        } else if (text.includes('moving') || text.includes('position')) {
+            statusText = 'CNC: Moving';
+        } else if (text.includes('dropping') || text.includes('drop')) {
+            statusText = 'CNC: Dropping';
+        } else if (text.includes('homing') || text.includes('home')) {
+            statusText = 'CNC: Homing';
+        }
+    }
+    
+    if (statusElement && statusText) {
+        showSimpleStatus(statusElement, statusText);
+    }
+}
+
+// Helper functions to extract info from message
+function getObjectFromMessage(text) {
+    const match = text.match(/obj_\w+/);
+    return match ? match[0] : '';
+}
+
+function getLaneFromMessage(text) {
+    const match = text.match(/lane (\d+)/);
+    return match ? `Lane ${match[1]}` : '';
+}
+
+// Show simple status update
+function showSimpleStatus(element, statusText) {
+    if (!element) return;
+    
+    element.textContent = statusText;
+    element.classList.add('status-active');
+    
+    // Clear after 3 seconds
+    setTimeout(() => {
+        const agent = element.id.split('-')[0];
+        element.textContent = `${agent.charAt(0).toUpperCase() + agent.slice(1)}: Idle`;
+        element.classList.remove('status-active');
+    }, 3000);
+}
+
+// Show vision lane flash for 2 seconds
+function showVisionLaneFlash(laneNumber) {
+    const visionLaneElement = document.getElementById('vision-lane');
+    if (!visionLaneElement) return;
+    
+    visionLaneElement.textContent = `Vision: Lane ${laneNumber}`;
+    visionLaneElement.style.display = 'inline';
+    visionLaneElement.style.color = '#FFFF00';  // Yellow flash
+    visionLaneElement.style.fontWeight = 'bold';
+    
+    // Flash effect
+    let flashCount = 0;
+    const flashInterval = setInterval(() => {
+        visionLaneElement.style.visibility = visionLaneElement.style.visibility === 'hidden' ? 'visible' : 'hidden';
+        flashCount++;
+        if (flashCount >= 8) {  // Flash 4 times (8 visibility changes)
+            clearInterval(flashInterval);
+            visionLaneElement.style.visibility = 'visible';
+        }
+    }, 250);
+    
+    // Hide after 2 seconds
+    setTimeout(() => {
+        clearInterval(flashInterval);
+        visionLaneElement.style.display = 'none';
+        visionLaneElement.style.color = '';
+        visionLaneElement.style.fontWeight = '';
+        visionLaneElement.style.visibility = 'visible';
+    }, 2000);
 }
 
 // Convert mm to canvas pixels
@@ -301,6 +523,15 @@ function drawCNC() {
     ctx.font = '10px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(worldState.cnc.status, x, 10);
+    
+    // Show assigned lane number as text under status
+    if (worldState.cnc && worldState.cnc.assigned_lane !== undefined) {
+        ctx.fillStyle = '#000';  // Black text
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Assigned: Lane ${worldState.cnc.assigned_lane}`, x, 50);
+    }
+    
     ctx.textAlign = 'start';
     
     // Show if carrying object
@@ -341,6 +572,30 @@ function drawBin() {
     ctx.textAlign = 'start';
 }
 
+// Draw confirmed target display at top of screen
+function drawConfirmedTarget() {
+    if (worldState.confirmed_target) {
+        const { object_id, lane } = worldState.confirmed_target;
+        
+        // Draw background rectangle
+        ctx.fillStyle = 'rgba(0, 100, 0, 0.8)';  // Dark green background
+        ctx.fillRect(10, 10, 200, 30);
+        
+        // Draw border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(10, 10, 200, 30);
+        
+        // Draw text
+        ctx.fillStyle = '#fff';  // White text
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Confirmed: ${object_id} Lane ${lane}`, 15, 30);
+        
+        ctx.textAlign = 'start';
+    }
+}
+
 // Main render loop
 function render() {
     // Clear canvas
@@ -361,6 +616,9 @@ function render() {
     
     // Draw CNC
     drawCNC();
+    
+    // Draw top screen confirmed target display
+    drawConfirmedTarget();
     
     // Continue animation
     animationFrame = requestAnimationFrame(render);

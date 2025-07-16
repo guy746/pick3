@@ -182,9 +182,10 @@ def start_background_threads():
     event_thread.daemon = True
     event_thread.start()
 
-if __name__ == '__main__':
-    start_background_threads()
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+# Flask development server - DISABLED since we use Gunicorn
+# if __name__ == '__main__':
+#     start_background_threads()
+#     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 """
     
     with open('app.py', 'w') as f:
@@ -208,7 +209,8 @@ import json
 import threading
 
 # Connect to Redis
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+# Using host.docker.internal for Docker container networking
+r = redis.Redis(host='host.docker.internal', port=6379, decode_responses=True)
 
 def create_test_object(obj_id, position_x, lane, obj_type='green'):
     """Create a test object in Redis"""
