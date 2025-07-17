@@ -174,7 +174,7 @@ def get_world_state():
         if bin_flash:
             state['bin_flash'] = True
             # READ-ONLY MODE: Comment out Redis writes for debugging
-            # redis_client.delete('bin:0:flash')  # UNCOMMENT for normal operation
+            redis_client.delete('bin:0:flash')
             
         # Get missed pickup alert
         missed_alert = redis_client.get('missed_pickup:alert')
@@ -279,13 +279,7 @@ def event_listener():
                         # Add status message for detection
                         add_status_message('vision', f"Detected {obj_type} object {obj_id} in lane {lane} at {position}mm")
                         
-                        # If it's a green object, add yellow ring
-                        if obj_type == 'green' and obj_id:
-                            # READ-ONLY MODE: Comment out Redis writes for debugging
-                            # redis_client.hset(f'object:{obj_id}', 'has_ring', 'true')  # UNCOMMENT for normal operation
-                            # redis_client.hset(f'object:{obj_id}', 'ring_color', 'yellow')  # UNCOMMENT for normal operation
-                            add_status_message('vision', f"Added yellow ring to pickable object {obj_id}")
-                            print(f"Vision: Added yellow ring to {obj_id}")
+                        # Vision agent now handles ring marking directly
                     
                     # Handle CNC pickup assignment events
                     elif message['channel'] == 'events:cnc' and event_type == 'pickup_assignment':
@@ -295,11 +289,9 @@ def event_listener():
                         cnc_id = assignment_data.get('cnc_id', 'cnc:0')
                         
                         if lane is not None:
-                            # Store lane number for CNC display
-                            # READ-ONLY MODE: Comment out Redis writes for debugging
-                            # redis_client.set('cnc:assigned_lane', str(lane))  # UNCOMMENT for normal operation
+                            # CNC agent now manages its own lane assignment
                             add_status_message('cnc', f"Assigned to pickup {obj_id} from lane {lane}")
-                            print(f"CNC: Assigned lane {lane} displayed on CNC icon")
+                            print(f"CNC: Assigned lane {lane}")
                     
                     # Handle CNC ready events
                     elif message['channel'] == 'events:cnc' and event_type == 'ready_for_assignment':
@@ -316,14 +308,10 @@ def event_listener():
                         if obj_id:
                             # READ-ONLY MODE: Comment out Redis writes for debugging
                             # Remove object from belt (objects:active and object hash)
-                            # redis_client.zrem('objects:active', obj_id)  # UNCOMMENT for normal operation
-                            # redis_client.delete(f'object:{obj_id}')  # UNCOMMENT for normal operation
+                            redis_client.zrem('objects:active', obj_id)
+                            redis_client.delete(f'object:{obj_id}')
                             
-                            # Clear confirmed target if this was the assigned object
-                            confirmed_target = redis_client.get('scoring:confirmed_target')
-                            if confirmed_target and confirmed_target.startswith(f'{obj_id}:'):
-                                # redis_client.delete('scoring:confirmed_target')  # UNCOMMENT for normal operation
-                                print(f"App: Cleared confirmed target for picked object {obj_id}")
+                            # Scoring agent now manages its own confirmed target cleanup
                             
                             add_status_message('cnc', f"Picked up object {obj_id}")
                             print(f"App: Removed picked object {obj_id} from belt")
@@ -337,7 +325,7 @@ def event_listener():
                         
                         # Flash trigger line yellow when object detected at trigger line
                         # READ-ONLY MODE: Comment out Redis writes for debugging
-                        # redis_client.setex('trigger:flash', 1, 'true')  # UNCOMMENT for normal operation
+                        redis_client.setex('trigger:flash', 1, 'true')
                         add_status_message('trigger', f"Object {obj_id} approaching in lane {lane} at {position}mm")
                     
                     # Handle scoring agent target confirmation events
@@ -347,9 +335,7 @@ def event_listener():
                         lane = confirmation_data.get('lane')
                         
                         if object_id and lane is not None:
-                            # Store confirmation for top screen display
-                            # READ-ONLY MODE: Comment out Redis writes for debugging
-                            # redis_client.set('scoring:confirmed_target', f"{object_id}:{lane}")  # UNCOMMENT for normal operation
+                            # Scoring agent now manages its own confirmed target state
                             add_status_message('scoring', f"Confirmed target {object_id} in lane {lane}")
                             print(f"Scoring: Confirmed target {object_id} in lane {lane}")
                     
@@ -361,12 +347,9 @@ def event_listener():
                             lane = trigger_data.get('lane', 0)
                             add_status_message('trigger', f"Object {obj_id} approaching in lane {lane}")
                         elif event_type in ['pick_operation_start', 'pick_operation_complete']:
-                            # Remove lane number display when pick operation occurs
-                            # READ-ONLY MODE: Comment out Redis writes for debugging
-                            # redis_client.delete('cnc:assigned_lane')  # UNCOMMENT for normal operation
-                            # redis_client.delete('scoring:confirmed_target')  # UNCOMMENT for normal operation
+                            # Agents now manage their own state cleanup
                             add_status_message('trigger', f"Pick operation {event_type.replace('_', ' ')}")
-                            print(f"CNC: Removed lane display - pick operation {event_type}")
+                            print(f"CNC: Pick operation {event_type}")
                         elif event_type == 'watch_for_object':
                             watch_data = data.get('data', {})
                             obj_id = watch_data.get('object_id')
@@ -405,7 +388,7 @@ def start_background_threads():
 def handle_clear_missed_alert():
     """Clear the missed pickup alert"""
     # READ-ONLY MODE: Comment out Redis writes for debugging
-    # redis_client.delete('missed_pickup:alert')  # UNCOMMENT for normal operation
+    redis_client.delete('missed_pickup:alert')
     pass
 
 # Start background threads when app is imported (for Gunicorn)

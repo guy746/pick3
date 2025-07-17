@@ -76,6 +76,12 @@ def publish_detection(obj_details):
         'data': obj_details
     }
     
+    # If it's a green object, add yellow ring for pickup marking
+    if obj_details['type'] == 'green' and obj_details['id']:
+        r.hset(f"object:{obj_details['id']}", 'has_ring', 'true')
+        r.hset(f"object:{obj_details['id']}", 'ring_color', 'yellow')
+        print(f"Vision: Added yellow ring to pickable object {obj_details['id']}")
+    
     # Publish to events:vision channel
     r.publish('events:vision', json.dumps(event))
     

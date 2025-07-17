@@ -3,6 +3,37 @@
 ## Overview
 This document details the implementation of a comprehensive GRBL interface system for FoxAlien 3S CNC controller simulation, including YAML-based route management and Redis announcement integration.
 
+## Redis Setup Configuration
+
+### Memory-Only Configuration
+The Pick1 system uses Redis as a memory-only data store for real-time event communication. No persistence is required as all data is transient simulation state.
+
+**Supervisor Configuration** (`/etc/supervisor/conf.d/pick1.conf`):
+```
+[program:pick1_redis]
+command=redis-server --daemonize no --save "" --stop-writes-on-bgsave-error no
+```
+
+**Key Settings**:
+- `--save ""` - Disables RDB snapshot persistence completely
+- `--stop-writes-on-bgsave-error no` - Prevents write blocking on save failures
+- `--daemonize no` - Runs in foreground for Supervisor management
+
+**Verification**:
+```bash
+redis-cli config get save                    # Should return empty
+redis-cli config get stop-writes-on-bgsave-error  # Should return "no"
+redis-cli ping                               # Should return "PONG"
+```
+
+### Event Channels Used
+- `events:vision` - Object detection events
+- `events:cnc` - CNC machine state and assignments
+- `events:scoring` - Object prioritization and targeting
+- `events:trigger` - Conveyor trigger zone events
+- `events:movement` - GRBL movement commands
+- `events:announcements` - System status announcements
+
 ## Architecture Change Summary
 
 ### Before

@@ -42,8 +42,7 @@ def update_cnc_state(status, position=None):
         'status': status,
         'has_object': 'true' if status in ['picking', 'moving_to_bin'] else 'false'
     }
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.hset(CNC_ID, mapping=cnc_data)  # UNCOMMENT for normal operation
+    r.hset(CNC_ID, mapping=cnc_data)
 
 def publish_ready():
     """Publish ready for assignment event"""
@@ -55,8 +54,7 @@ def publish_ready():
             'position': current_position['x']
         }
     }
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.publish('events:cnc', json.dumps(event))  # UNCOMMENT for normal operation
+    r.publish('events:cnc', json.dumps(event))
     print(f"[CNC] Published ready_for_assignment")
 
 def request_trigger_watch(obj_id, lane):
@@ -81,8 +79,7 @@ def request_trigger_watch(obj_id, lane):
         }
     }
     
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.publish('events:trigger', json.dumps(event))  # UNCOMMENT for normal operation
+    r.publish('events:trigger', json.dumps(event))
     print(f"[CNC] Requested trigger watch for {obj_id} in lane {lane} (timeout: {timeout:.1f}s)")
 
 def execute_gcode_routine(routine_name, lane=None, pickup_x=None):
@@ -130,6 +127,9 @@ def handle_pickup_assignment(assignment_data):
             'start_time': time.time(),
             'trigger_timeout': time.time() + 5.0  # 5-second timeout for trigger message
         }
+    
+    # Set assigned lane for display
+    r.set('cnc:assigned_lane', str(lane))
     
     logging.info(f"Received assignment for {obj_id} in lane {lane} at {position}mm")
     print(f"\n[CNC] Received assignment for {obj_id} in lane {lane}")
@@ -194,8 +194,7 @@ def handle_trigger_notification(trigger_data):
     # Execute pickup
     update_cnc_state('picking')
     # Set object status to 'picking' to stop belt animation
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.hset(f'object:{obj_id}', 'status', 'picking')  # UNCOMMENT for normal operation
+    r.hset(f'object:{obj_id}', 'status', 'picking')
     execute_gcode_routine('pickup')
     
     # Publish pickup event - let app.py handle object removal
@@ -207,8 +206,7 @@ def handle_trigger_notification(trigger_data):
             'object_id': obj_id
         }
     }
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.publish('events:cnc', json.dumps(pickup_event))  # UNCOMMENT for normal operation
+    r.publish('events:cnc', json.dumps(pickup_event))
     print(f"[CNC] Picked up {obj_id}")
     
     # Deliver to bin
@@ -216,8 +214,7 @@ def handle_trigger_notification(trigger_data):
     execute_gcode_routine('deliver')
     
     # Flash bin to indicate drop
-    # READ-ONLY MODE: Comment out Redis writes for debugging
-    # r.setex('bin:0:flash', 1, 'true')  # UNCOMMENT for normal operation
+    r.setex('bin:0:flash', 1, 'true')
     
     # Return home
     update_cnc_state('returning_home')

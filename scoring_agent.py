@@ -28,6 +28,8 @@ class ScoringAgent(BaseAgent):
                 self.handle_vision_detection(event)
             elif channel == 'events:cnc' and event.get('event') == 'ready_for_assignment':
                 self.handle_cnc_ready(event)
+            elif channel == 'events:cnc' and event.get('event') == 'object_picked':
+                self.handle_object_picked(event)
         except Exception as e:
             self.logger.error(f"Error processing message: {e}", exc_info=True)
     
@@ -82,6 +84,9 @@ class ScoringAgent(BaseAgent):
                     'position_x': best_object['position']
                 }
             }
+            # Set confirmed target in Redis for webapp display
+            self.redis.set('scoring:confirmed_target', f"{best_object['id']}:{best_object['lane']}")
+            
             self.redis.publish('events:scoring', json.dumps(confirmation))
             self.logger.info(f"Confirmed target {best_object['id']} in lane {best_object['lane']}")
             
@@ -91,6 +96,16 @@ class ScoringAgent(BaseAgent):
         else:
             self.logger.warning(f"No pickable objects available for {cnc_id}")
             self.logger.debug(f"Current tracked objects: {list(self.tracked_objects.keys())}")
+    
+    def handle_object_picked(self, event_data):
+        """Handle object pickup completion - clear confirmed target"""
+        obj_data = event_data.get('data', {})
+        picked_obj_id = obj_data.get('object_id')
+        
+        if picked_obj_id:
+            # Clear confirmed target since object was picked up
+            self.redis.delete('scoring:confirmed_target')
+            self.logger.info(f"Cleared confirmed target after pickup of {picked_obj_id}")
     
     def get_best_assignment(self):
         """Find the best object to pick using LIFO (Last In, First Out) to give CNC maximum setup time"""
